@@ -9,7 +9,7 @@ import {
   attachmentCitations,
   containsCitationEntry,
   isCitationComposerAttachment,
-  migrateCitationAttachments,
+  normalizeCitationAttachments,
 } from "./citation-attachment";
 import {
   MAX_CITATION_TEXT_LENGTH,
@@ -370,7 +370,7 @@ function findComposerAttachmentBridge(input: DomElement): ComposerAttachmentBrid
 }
 
 function migrateBridgeCitationAttachments(bridge: ComposerAttachmentBridge): void {
-  const nextAttachments = migrateCitationAttachments(bridge.attachments);
+  const nextAttachments = normalizeCitationAttachments(bridge.attachments);
   if (nextAttachments) bridge.setAttachments(nextAttachments);
 }
 
@@ -447,12 +447,12 @@ function highlightCitationText(
 function tryAttachCitationToComposer(
   input: DomTextInput,
   entry: CitationEntry,
-): "attached" | "duplicate" | "too-large" | false {
+): "attached" | "duplicate" | false {
   const attachmentBridge = findComposerAttachmentBridge(input);
   if (!attachmentBridge) return false;
 
   const nextAttachments = addCitationToAttachments(attachmentBridge.attachments, entry);
-  if (nextAttachments === "duplicate" || nextAttachments === "too-large") return nextAttachments;
+  if (nextAttachments === "duplicate") return nextAttachments;
   try {
     attachmentBridge.setAttachments(nextAttachments);
     return "attached";
@@ -483,7 +483,7 @@ export function appendCitationToComposer(
     input.focus();
     return "attached";
   }
-  if (attachmentResult === "duplicate" || attachmentResult === "too-large") {
+  if (attachmentResult === "duplicate") {
     return attachmentResult;
   }
 
@@ -670,7 +670,6 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
 
   let activeSelection: SelectionSnapshot | null = null;
   let citedSelections: CitedSelection[] = [];
-  let pillCursor: { citationsKey: string; index: number } | null = null;
   let previousFocusedElement: DomElement | null = null;
   let toastTimer: unknown = null;
   let ignoreSelectionChangesTimer: unknown = null;
@@ -885,15 +884,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     const bridge = input ? findComposerAttachmentBridge(input) : null;
     if (bridge) migrateBridgeCitationAttachments(bridge);
 
-    // Each click on the pill goes to the previous citation, starting at the latest.
-    const citations = attachmentCitations(attachment);
-    const citationsKey = JSON.stringify(citations);
-    const index =
-      pillCursor?.citationsKey === citationsKey
-        ? (pillCursor.index - 1 + citations.length) % citations.length
-        : citations.length - 1;
-    pillCursor = { citationsKey, index };
-    const entry = citations[index];
+    // A combined attachment from an earlier version goes to its latest citation.
+    const entry = attachmentCitations(attachment).at(-1);
     const cited = citedSelections.find(
       (selection) => selection.composerInput === input && selection.text === entry?.quote,
     );
@@ -904,8 +896,6 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
       !highlightCitationText(entry.quote, cited?.range ?? null, cited?.anchorElement ?? null)
     ) {
       showToast("Could not find the cited text in this conversation.", true);
-    } else if (citations.length > 1) {
-      showToast(`Citation ${index + 1} of ${citations.length}`);
     }
   };
   const handleWindowChange = (): void => {

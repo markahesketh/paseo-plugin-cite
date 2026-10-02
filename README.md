@@ -11,10 +11,10 @@ Select part of an assistant reply, choose **Cite**, write a comment, and submit 
 - Submits with `Enter`.
 - Inserts a new line with `Shift+Enter` or `Alt+Enter`.
 - Cancels with the **Cancel** button, `Escape`, or an outside click.
-- Adds the citation to the composer as a `Citation` attachment with a comment count.
-- Combines several citations into one composer attachment.
+- Adds each citation to the composer as its own attachment, so you can remove each one separately.
+- Shows a short form of the comment and the quote on each attachment.
 - Prevents duplicate citations.
-- Scrolls to and highlights the cited text when you select the citation attachment. Each further selection goes to the previous citation.
+- Scrolls to and highlights the cited text when you select a citation attachment.
 - Copies a formatted citation when the composer attachment bridge is unavailable.
 
 ## Requirements
@@ -47,14 +47,14 @@ After installation, open or reload the Paseo client. Start a new conversation if
 5. Continue writing your message in the composer.
 6. Submit the message normally.
 
-The composer shows one citation card. Its count increases when you add more citations:
+The composer shows one card for each citation. The card shows the start of your comment, with the start of the quote below it:
 
 ```text
-Citation
-2 comments
+Check this claim again
+Citation “The cache is cleared on each…”
 ```
 
-Select the card to scroll to and highlight the most recently added citation in the current conversation. Select it again to go to the previous citation. After the first citation, it goes back to the latest one.
+Select a card to scroll to and highlight its cited text in the current conversation. Remove a card to remove only that citation. Combined citation cards from earlier versions are split into one card for each citation.
 
 The text sent with each citation has this form:
 
@@ -66,7 +66,7 @@ Comment:
 your comment
 ```
 
-The plugin stores citation entries as structured data inside the composer attachment and keeps the formatted text as a compatibility snapshot for the agent. It still reads text that uses the earlier `[Citation from your previous answer]` header.
+The plugin stores each citation entry as structured data inside its composer attachment and keeps the formatted text as a compatibility snapshot for the agent. It still reads text that uses the earlier `[Citation from your previous answer]` header.
 
 ## Known limitations
 
@@ -103,15 +103,15 @@ paseo plugin install /absolute/path/to/paseo-plugin-cite
 paseo plugin reload paseo-cite
 ```
 
-The test suite covers citation formatting, multiple citations, delimiter-like quote and comment content, size limits, how new citations merge with existing attachments, the committed React fiber lookup against React DOM, and the cite button against jsdom.
+The test suite covers citation formatting, multiple citations, delimiter-like quote and comment content, size limits, one attachment for each citation, the split of combined attachments, the card text, the committed React fiber lookup against React DOM, and the cite button against jsdom.
 
 ## Project layout
 
 ```text
 .
 ├── client/
-│   ├── citation-attachment.ts        Citation composer attachment model and merge
-│   ├── citation-attachment.test.mjs  Attachment merge tests
+│   ├── citation-attachment.ts        Citation composer attachment model
+│   ├── citation-attachment.test.mjs  Attachment tests
 │   ├── citation-format.ts            Citation model and text compatibility format
 │   ├── citation-format.test.mjs      Formatting tests
 │   ├── react-fiber.ts                Committed React fiber lookup for the composer bridge

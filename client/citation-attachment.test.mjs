@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { addCitationToAttachments, attachmentCitations } from "./citation-attachment.ts";
+import {
+  addCitationToAttachments,
+  attachmentCitations,
+  citationAttachmentForEntry,
+  normalizeCitationAttachments,
+} from "./citation-attachment.ts";
 
-function citationAttachment(citations) {
+function combinedCitationAttachment(citations) {
   return {
     kind: "plugin_resource",
     pluginId: "paseo-cite",
@@ -13,27 +18,50 @@ function citationAttachment(citations) {
   };
 }
 
-test("new citation keeps citations from every citation attachment and other attachments", () => {
+const citations = (attachments) =>
+  attachments.map((attachment) => attachmentCitations(attachment));
+
+test("each new citation gets its own attachment after the other attachments", () => {
   const other = { kind: "plugin_resource", pluginId: "other", sourceId: "issues", item: { text: "" } };
-  const attachments = [
-    citationAttachment([{ quote: "one", comment: "first" }]),
-    other,
-    citationAttachment([{ quote: "two", comment: "second" }]),
-  ];
+  const first = citationAttachmentForEntry({ quote: "one", comment: "first" });
 
-  const next = addCitationToAttachments(attachments, { quote: "three", comment: "third" });
+  const next = addCitationToAttachments([first, other], { quote: "two", comment: "second" });
 
-  assert.equal(next.length, 2);
-  assert.equal(next[0], other);
-  assert.deepEqual(attachmentCitations(next[1]), [
-    { quote: "one", comment: "first" },
-    { quote: "two", comment: "second" },
-    { quote: "three", comment: "third" },
-  ]);
+  assert.equal(next[0], first);
+  assert.equal(next[1], other);
+  assert.deepEqual(attachmentCitations(next[2]), [{ quote: "two", comment: "second" }]);
 });
 
 test("citation already in an attachment is a duplicate", () => {
-  const attachments = [citationAttachment([{ quote: "one", comment: "first" }])];
+  const attachments = [citationAttachmentForEntry({ quote: "one", comment: "first" })];
 
   assert.equal(addCitationToAttachments(attachments, { quote: "one", comment: "first" }), "duplicate");
+});
+
+test("combined attachments split into one attachment per unique citation", () => {
+  const attachments = [
+    combinedCitationAttachment([
+      { quote: "one", comment: "first" },
+      { quote: "two", comment: "second" },
+    ]),
+    combinedCitationAttachment([{ quote: "one", comment: "first" }]),
+  ];
+
+  const next = normalizeCitationAttachments(attachments);
+
+  assert.deepEqual(citations(next), [
+    [{ quote: "one", comment: "first" }],
+    [{ quote: "two", comment: "second" }],
+  ]);
+  assert.equal(normalizeCitationAttachments(next), null);
+});
+
+test("citation pill shows the comment and quote cut to a short length", () => {
+  const attachment = citationAttachmentForEntry({
+    quote: "a quote that is much longer than the pill has room to show",
+    comment: "a comment that is also much longer than the pill has room for",
+  });
+
+  assert.equal(attachment.item.title, "a comment that is also much longer than the pil…");
+  assert.equal(attachment.item.identifier, "“a quote that is much longer than the pi…”");
 });
