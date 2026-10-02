@@ -1,26 +1,38 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { findCommittedFiber } from "./react-fiber.ts";
+import { JSDOM } from "jsdom";
 
-function fiberTree(attachments) {
-  const fiberRoot = {};
-  const hostRoot = { tag: 3, stateNode: fiberRoot };
-  const composer = { tag: 0, return: hostRoot, memoizedProps: { attachments } };
-  const input = { tag: 5, return: composer, stateNode: "textarea" };
-  hostRoot.child = composer;
-  composer.child = input;
-  return { fiberRoot, hostRoot, input };
-}
+const dom = new JSDOM('<div id="root"></div>');
+globalThis.window = dom.window;
+globalThis.document = dom.window.document;
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-test("committed fiber replaces the stale copy cached on the DOM node", () => {
-  const stale = fiberTree(["first"]);
-  const committed = fiberTree(["first", "second"]);
-  stale.hostRoot.stateNode = committed.fiberRoot;
-  committed.fiberRoot.current = committed.hostRoot;
+const { act, createElement: h, useState } = await import("react");
+const { createRoot } = await import("react-dom/client");
+const { findCommittedFiberPath } = await import("./react-fiber.ts");
 
-  const fiber = findCommittedFiber(stale.input);
+test("committed fiber path holds the latest props after each render", async () => {
+  let setAttachments;
+  function Composer({ attachments }) {
+    // A controlled textarea changes props on each render, so its fiber alternates.
+    return h("div", null, h("textarea", { value: attachments.join(","), onChange() {} }));
+  }
+  function App() {
+    const [attachments, setState] = useState(["1"]);
+    setAttachments = setState;
+    return h(Composer, { attachments });
+  }
+  const root = createRoot(document.getElementById("root"));
+  await act(() => root.render(h(App)));
+  const textarea = document.querySelector("textarea");
 
-  assert.equal(fiber, committed.input);
-  assert.deepEqual(fiber.return.memoizedProps.attachments, ["first", "second"]);
+  for (const attachments of [["1", "2"], ["1", "2", "3"]]) {
+    await act(() => setAttachments(attachments));
+    const composer = findCommittedFiberPath(textarea).find((fiber) =>
+      Array.isArray(fiber.memoizedProps?.attachments),
+    );
+    assert.deepEqual(composer.memoizedProps.attachments, attachments);
+  }
+  await act(() => root.unmount());
 });

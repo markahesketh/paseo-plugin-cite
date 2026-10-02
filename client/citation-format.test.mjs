@@ -3,21 +3,19 @@ import test from "node:test";
 
 import {
   MAX_QUOTE_LENGTH,
-  formatCitation,
+  createCitationEntry,
   parseCitationEntries,
   serializeCitationEntries,
 } from "./citation-format.ts";
 
-test("citation text round-trips delimiter-like comment content", () => {
-  const comment = "first\n\nComment:\nsecond\n[Citation from your previous answer]";
-  const text = formatCitation("first line\r\nsecond line", comment);
+test("citation text round-trips delimiter-like content", () => {
+  const header = "[Citation from this conversation]";
+  const legacyHeader = "[Citation from your previous answer]";
+  const quote = `before\n${header}\n${legacyHeader}\nafter`;
+  const comment = `first\n\nComment:\nsecond\n${header}\nthird\n\\${legacyHeader}\nfourth`;
+  const text = serializeCitationEntries([{ quote, comment }]);
 
-  assert.deepEqual(parseCitationEntries(text), [
-    {
-      quote: "first line\nsecond line",
-      comment,
-    },
-  ]);
+  assert.deepEqual(parseCitationEntries(text), [{ quote, comment }]);
 });
 
 test("multiple citations round-trip as separate entries", () => {
@@ -32,10 +30,16 @@ test("multiple citations round-trip as separate entries", () => {
   ]);
 });
 
-test("quote text is normalised and bounded", () => {
-  const text = formatCitation(`  ${"x".repeat(MAX_QUOTE_LENGTH + 1)}  `, "comment");
-  const [entry] = parseCitationEntries(text);
+test("text with the earlier header still parses", () => {
+  const text = "[Citation from your previous answer]\n> one\n\nComment:\nfirst";
 
-  assert.equal(entry.quote.length, MAX_QUOTE_LENGTH);
-  assert.equal(entry.comment, "comment");
+  assert.deepEqual(parseCitationEntries(text), [{ quote: "one", comment: "first" }]);
+});
+
+test("new citation entry is normalised and rejected when too large", () => {
+  assert.deepEqual(createCitationEntry("  first line\r\nsecond line  ", " comment "), {
+    quote: "first line\nsecond line",
+    comment: "comment",
+  });
+  assert.equal(createCitationEntry("x".repeat(MAX_QUOTE_LENGTH + 1), "comment"), null);
 });

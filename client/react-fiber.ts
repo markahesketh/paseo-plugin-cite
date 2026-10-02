@@ -3,13 +3,14 @@ export interface ReactFiberNode {
   return?: ReactFiberNode | null;
   child?: ReactFiberNode | null;
   sibling?: ReactFiberNode | null;
+  alternate?: ReactFiberNode | null;
   stateNode?: unknown;
   memoizedProps?: Record<string, unknown>;
 }
 
 const HOST_ROOT_TAG = 3;
 
-export function findReactFiber(element: object): ReactFiberNode | null {
+function findReactFiber(element: object): ReactFiberNode | null {
   const properties = element as Record<string, unknown>;
   const fiberProperty = Object.getOwnPropertyNames(properties).find(
     (property) =>
@@ -20,22 +21,32 @@ export function findReactFiber(element: object): ReactFiberNode | null {
 }
 
 // React caches a fiber on a DOM node only when it creates the node. Each render swaps
-// between two fiber copies, so the cached copy can hold props from an older render.
-// Find the copy for the same DOM node in the committed tree.
-export function findCommittedFiber(fiber: ReactFiberNode): ReactFiberNode {
-  let root = fiber;
-  while (root.return) root = root.return;
-  if (root.tag !== HOST_ROOT_TAG) return fiber;
+// between two fiber copies, so the cached copy and its return pointers can hold props
+// from an older render. Follow the path from the committed root instead. At each level,
+// the committed fiber is the cached path fiber or its alternate.
+//
+// Returns the committed fibers from the element up to the root, or null if the
+// element is not in the committed tree.
+export function findCommittedFiberPath(element: object): ReactFiberNode[] | null {
+  const cachedPath: ReactFiberNode[] = [];
+  for (let fiber = findReactFiber(element); fiber; fiber = fiber.return ?? null) {
+    cachedPath.push(fiber);
+  }
+  const root = cachedPath.at(-1);
+  if (!root || root.tag !== HOST_ROOT_TAG) return null;
 
   const committedRoot = (root.stateNode as { current?: ReactFiberNode } | null)?.current;
-  if (!committedRoot) return fiber;
+  if (!committedRoot) return null;
 
-  const pending: ReactFiberNode[] = [committedRoot];
-  while (pending.length > 0) {
-    const node = pending.pop() as ReactFiberNode;
-    if (node.stateNode === fiber.stateNode) return node;
-    if (node.sibling) pending.push(node.sibling);
-    if (node.child) pending.push(node.child);
+  let committed: ReactFiberNode = committedRoot;
+  const committedPath = [committed];
+  for (let index = cachedPath.length - 2; index >= 0; index -= 1) {
+    const cached = cachedPath[index];
+    let child: ReactFiberNode | null = committed.child ?? null;
+    while (child && child !== cached && child !== cached.alternate) child = child.sibling ?? null;
+    if (!child) return null;
+    committed = child;
+    committedPath.push(committed);
   }
-  return fiber;
+  return committedPath.reverse();
 }

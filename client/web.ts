@@ -1,16 +1,22 @@
 import { Platform } from "react-native";
 
+import type { CitationComposerAttachment } from "./citation-attachment";
 import type { CitationEntry } from "./citation-format";
-import { findCommittedFiber, findReactFiber } from "./react-fiber";
-import type { ReactFiberNode } from "./react-fiber";
+import { findCommittedFiberPath } from "./react-fiber";
 
 import {
+  addCitationToAttachments,
+  attachmentCitations,
+  containsCitationEntry,
+  isCitationComposerAttachment,
+  migrateCitationAttachments,
+} from "./citation-attachment";
+import {
   MAX_CITATION_TEXT_LENGTH,
-  formatCitation,
-  normalizeCitationEntry,
+  createCitationEntry,
+  formatCitationEntry,
   normalizeCitationText,
   parseCitationEntries,
-  serializeCitationEntries,
 } from "./citation-format";
 
 type CitationInsertResult =
@@ -130,9 +136,6 @@ declare const window: DomWindow;
 const OVERLAY_ID = "paseo-cite-overlay";
 const CITE_BUTTON_ID = "paseo-cite-button";
 const CITE_PANEL_ID = "paseo-cite-panel";
-const CITATION_PLUGIN_ID = "paseo-cite";
-const CITATION_SOURCE_ID = "citations";
-const CITATION_URL = "paseo-cite://citation";
 const CITATION_PILL_SELECTOR = '[data-testid="composer-plugin-resource-attachment-pill"]';
 const FONT_STACK =
   'var(--paseo-ui-font, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif)';
@@ -161,37 +164,17 @@ interface SelectionSnapshot {
   composerInput: DomTextInput | null;
 }
 
-interface CitationComposerAttachment {
-  kind: "plugin_resource";
-  pluginId: string;
-  sourceId: string;
-  sourceTitle: string;
-  sourceIcon: string;
-  citations?: CitationEntry[];
-  item: {
-    id: string;
-    identifier: string;
-    title: string;
-    subtitle: string;
-    url: string;
-    text: string;
-    resourceType: string;
-  };
-}
-
 interface ComposerAttachmentBridge {
   attachments: unknown[];
   setAttachments(nextAttachments: unknown[]): void;
 }
 
-interface LatestCitation {
+interface CitedSelection {
   text: string;
   range: DomRange;
   anchorElement: DomElement | null;
   composerInput: DomTextInput | null;
 }
-
-class CitationTooLargeError extends Error {}
 
 let activeOverlayCleanup: (() => void) | null = null;
 
@@ -218,11 +201,17 @@ function elementIsConnected(element: DomElement | null): boolean {
   return Boolean(element && element.isConnected !== false);
 }
 
+// Hidden panes can stay mounted. Their composers have an empty rect.
+function elementIsVisible(element: DomElement): boolean {
+  const rect = element.getBoundingClientRect();
+  return rect.right > rect.left && rect.bottom > rect.top;
+}
+
 function nearestComposerInput(
   candidates: DomTextInput[],
   referenceRect: DomRect | null,
 ): DomTextInput | null {
-  return candidates.reduce<DomTextInput | null>((closest, candidate) => {
+  return candidates.filter(elementIsVisible).reduce<DomTextInput | null>((closest, candidate) => {
     if (!closest || !referenceRect) return closest ?? candidate;
     return rectDistance(referenceRect, candidate.getBoundingClientRect()) <
       rectDistance(referenceRect, closest.getBoundingClientRect())
@@ -353,9 +342,7 @@ function replaceNativeInputValue(input: DomTextInput, value: string): void {
 }
 
 function findComposerAttachmentBridge(input: DomElement): ComposerAttachmentBridge | null {
-  const cachedFiber = findReactFiber(input);
-  let fiber: ReactFiberNode | null = cachedFiber ? findCommittedFiber(cachedFiber) : null;
-  while (fiber) {
+  for (const fiber of findCommittedFiberPath(input) ?? []) {
     const props = fiber.memoizedProps;
     if (
       props &&
@@ -367,103 +354,24 @@ function findComposerAttachmentBridge(input: DomElement): ComposerAttachmentBrid
         setAttachments: props.onChangeAttachments as (nextAttachments: unknown[]) => void,
       };
     }
-    fiber = fiber.return ?? null;
   }
   return null;
 }
 
-function isCitationComposerAttachment(value: unknown): value is CitationComposerAttachment {
-  if (!value || typeof value !== "object") return false;
-  const attachment = value as Partial<CitationComposerAttachment>;
-  return (
-    attachment.kind === "plugin_resource" &&
-    attachment.pluginId === CITATION_PLUGIN_ID &&
-    attachment.sourceId === CITATION_SOURCE_ID &&
-    Boolean(attachment.item && typeof attachment.item.text === "string")
-  );
+function migrateBridgeCitationAttachments(bridge: ComposerAttachmentBridge): void {
+  const nextAttachments = migrateCitationAttachments(bridge.attachments);
+  if (nextAttachments) bridge.setAttachments(nextAttachments);
 }
 
-function isPluginResourceAttachment(value: unknown): boolean {
-  return Boolean(
-    value && typeof value === "object" && (value as { kind?: unknown }).kind === "plugin_resource",
-  );
-}
-
-function attachmentForPill(
-  pill: DomElement | null,
-  bridge: ComposerAttachmentBridge,
-): unknown | null {
-  if (!pill?.parentElement) return null;
-  const pills = pill.parentElement.querySelectorAll(CITATION_PILL_SELECTOR);
-  let pillIndex = -1;
-  for (let index = 0; index < pills.length; index += 1) {
-    if (pills[index] === pill) {
-      pillIndex = index;
-      break;
+// Paseo renders each plugin pill with its own attachment as the "attachment" prop.
+function citationAttachmentForPill(pill: DomElement): CitationComposerAttachment | null {
+  for (const fiber of findCommittedFiberPath(pill) ?? []) {
+    const attachment = fiber.memoizedProps?.attachment;
+    if (attachment && typeof attachment === "object") {
+      return isCitationComposerAttachment(attachment) ? attachment : null;
     }
   }
-  if (pillIndex < 0) return null;
-
-  const pluginAttachments = bridge.attachments.filter(isPluginResourceAttachment);
-  return pluginAttachments[pillIndex] ?? null;
-}
-
-function attachmentCitations(attachment: CitationComposerAttachment): CitationEntry[] {
-  const structuredCitations = attachment.citations?.map(normalizeCitationEntry) ?? [];
-  return structuredCitations.length > 0
-    ? structuredCitations
-    : parseCitationEntries(attachment.item.text);
-}
-
-function sameCitationEntries(left: CitationEntry[], right: CitationEntry[]): boolean {
-  return (
-    left.length === right.length &&
-    left.every(
-      (entry, index) =>
-        entry.quote === right[index]?.quote && entry.comment === right[index]?.comment,
-    )
-  );
-}
-
-function normalizeCitationComposerAttachment(
-  attachment: CitationComposerAttachment,
-): CitationComposerAttachment {
-  const citations = attachmentCitations(attachment);
-  return {
-    ...attachment,
-    sourceTitle: "Citation",
-    citations,
-    item: {
-      ...attachment.item,
-      identifier: `${citations.length} comment${citations.length === 1 ? "" : "s"}`,
-      title: "Citation",
-      subtitle: String(citations.length),
-      url: CITATION_URL,
-      text: citations.length ? serializeCitationEntries(citations) : attachment.item.text,
-    },
-  };
-}
-
-function migrateCitationAttachments(bridge: ComposerAttachmentBridge): void {
-  let changed = false;
-  const nextAttachments = bridge.attachments.map((attachment) => {
-    if (!isCitationComposerAttachment(attachment)) return attachment;
-
-    const normalized = normalizeCitationComposerAttachment(attachment);
-    const citations = attachmentCitations(attachment);
-    changed =
-      changed ||
-      attachment.sourceTitle !== normalized.sourceTitle ||
-      attachment.item.identifier !== normalized.item.identifier ||
-      attachment.item.title !== normalized.item.title ||
-      attachment.item.subtitle !== normalized.item.subtitle ||
-      attachment.item.url !== normalized.item.url ||
-      attachment.item.text !== normalized.item.text ||
-      !sameCitationEntries(attachment.citations ?? [], citations);
-    return normalized;
-  });
-
-  if (changed) bridge.setAttachments(nextAttachments);
+  return null;
 }
 
 function highlightCitationText(
@@ -525,91 +433,25 @@ function highlightCitationText(
   return false;
 }
 
-function isCitationPillTarget(target: DomElement | null): boolean {
-  const pill = target?.closest(CITATION_PILL_SELECTOR);
-  return Boolean(pill?.textContent?.toLowerCase().includes("citation"));
-}
-
-function isCitationRemoveTarget(target: DomElement | null): boolean {
-  const labelledElement = target?.closest("[aria-label],[data-testid],[title]");
-  const label = [
-    labelledElement?.getAttribute("aria-label"),
-    labelledElement?.getAttribute("data-testid"),
-    labelledElement?.getAttribute("title"),
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  return /remove|delete|discard|clear/.test(label);
-}
-
-function buildCitationComposerAttachment(
-  attachments: unknown[],
-  citation: string,
-): CitationComposerAttachment | "duplicate" {
-  const previous = attachments.find(isCitationComposerAttachment);
-  const previousCitations = previous ? attachmentCitations(previous) : [];
-  const newCitation = parseCitationEntries(citation).at(-1);
-  if (!newCitation) throw new Error("Citation text is invalid");
-  if (
-    previousCitations.some(
-      (entry) => entry.quote === newCitation.quote && entry.comment === newCitation.comment,
-    )
-  ) {
-    return "duplicate";
-  }
-
-  const citations = [...previousCitations, newCitation];
-  const text = serializeCitationEntries(citations);
-  if (text.length > MAX_CITATION_TEXT_LENGTH) {
-    throw new CitationTooLargeError("Citation attachment is too large");
-  }
-
-  return {
-    kind: "plugin_resource",
-    pluginId: CITATION_PLUGIN_ID,
-    sourceId: CITATION_SOURCE_ID,
-    sourceTitle: "Citation",
-    sourceIcon: "MessageSquareCode",
-    citations,
-    item: {
-      id: "conversation-citations",
-      identifier: `${citations.length} comment${citations.length === 1 ? "" : "s"}`,
-      title: "Citation",
-      subtitle: String(citations.length),
-      url: CITATION_URL,
-      text,
-      resourceType: "conversation-citation",
-    },
-  };
-}
-
 function tryAttachCitationToComposer(
   input: DomTextInput,
-  citation: string,
+  entry: CitationEntry,
 ): "attached" | "duplicate" | "too-large" | false {
   const attachmentBridge = findComposerAttachmentBridge(input);
   if (!attachmentBridge) return false;
 
+  const nextAttachments = addCitationToAttachments(attachmentBridge.attachments, entry);
+  if (nextAttachments === "duplicate" || nextAttachments === "too-large") return nextAttachments;
   try {
-    const citationAttachment = buildCitationComposerAttachment(
-      attachmentBridge.attachments,
-      citation,
-    );
-    if (citationAttachment === "duplicate") return "duplicate";
-    const otherAttachments = attachmentBridge.attachments.filter(
-      (attachment) => !isCitationComposerAttachment(attachment),
-    );
-    attachmentBridge.setAttachments([...otherAttachments, citationAttachment]);
+    attachmentBridge.setAttachments(nextAttachments);
     return "attached";
-  } catch (error) {
-    if (error instanceof CitationTooLargeError) return "too-large";
+  } catch {
     return false;
   }
 }
 
 export function appendCitationToComposer(
-  formattedCitation: string,
+  entry: CitationEntry,
   preferredInput: DomTextInput | null = null,
 ): CitationInsertResult {
   if (Platform.OS !== "web") {
@@ -617,13 +459,15 @@ export function appendCitationToComposer(
   }
 
   const input =
-    (preferredInput && elementIsConnected(preferredInput) ? preferredInput : null) ??
-    (document.querySelector(COMPOSER_INPUT_SELECTOR) as DomTextInput | null);
+    (preferredInput && elementIsConnected(preferredInput) && elementIsVisible(preferredInput)
+      ? preferredInput
+      : null) ??
+    nearestComposerInput(document.querySelectorAll(COMPOSER_INPUT_SELECTOR) as DomTextInput[], null);
   if (!input) {
     return "composer-not-found";
   }
 
-  const attachmentResult = tryAttachCitationToComposer(input, formattedCitation);
+  const attachmentResult = tryAttachCitationToComposer(input, entry);
   if (attachmentResult === "attached") {
     input.focus();
     return "attached";
@@ -632,6 +476,8 @@ export function appendCitationToComposer(
     return attachmentResult;
   }
 
+  if (containsCitationEntry(parseCitationEntries(input.value), entry)) return "duplicate";
+  const formattedCitation = formatCitationEntry(entry);
   const currentDraft = input.value.trimEnd();
   const nextDraft = currentDraft ? `${currentDraft}\n\n${formattedCitation}` : formattedCitation;
   if (nextDraft.length > MAX_CITATION_TEXT_LENGTH) return "too-large";
@@ -806,13 +652,14 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   const migrateExistingCitationAttachments = (): void => {
     for (const input of document.querySelectorAll(COMPOSER_INPUT_SELECTOR)) {
       const bridge = findComposerAttachmentBridge(input);
-      if (bridge) migrateCitationAttachments(bridge);
+      if (bridge) migrateBridgeCitationAttachments(bridge);
     }
   };
   migrateExistingCitationAttachments();
 
   let activeSelection: SelectionSnapshot | null = null;
-  let latestCitation: LatestCitation | null = null;
+  let citedSelections: CitedSelection[] = [];
+  let pillCursor: { citationsKey: string; index: number } | null = null;
   let previousFocusedElement: DomElement | null = null;
   let toastTimer: unknown = null;
   let ignoreSelectionChangesTimer: unknown = null;
@@ -833,20 +680,6 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
       toast.style.display = "none";
       toastTimer = null;
     }, 2600);
-  };
-
-  const clearStaleLatestCitation = (): void => {
-    if (!latestCitation) return;
-    if (!elementIsConnected(latestCitation.anchorElement)) {
-      latestCitation = null;
-      return;
-    }
-
-    const input = latestCitation.composerInput;
-    const bridge = input ? findComposerAttachmentBridge(input) : null;
-    if (!bridge?.attachments.some(isCitationComposerAttachment)) {
-      latestCitation = null;
-    }
   };
 
   const closePanel = (): void => {
@@ -890,7 +723,6 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
 
   const handleSelectionChange = (): void => {
     if (ignoreSelectionChangesTimer !== null || panel.style.display === "block") return;
-    clearStaleLatestCitation();
     const nextSelection = readSelection();
     activeSelection = nextSelection;
     if (!nextSelection) {
@@ -918,16 +750,24 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     if (!activeSelection || !commentInput.value.trim()) return;
 
     const submittedSelection = activeSelection;
-    const citation = formatCitation(submittedSelection.text, commentInput.value);
-    const result = appendCitationToComposer(citation, submittedSelection.composerInput);
+    const entry = createCitationEntry(submittedSelection.text, commentInput.value);
+    if (!entry) {
+      showToast("This citation is too large to add.", true);
+      return;
+    }
+    const result = appendCitationToComposer(entry, submittedSelection.composerInput);
     if (result === "attached" || result === "inserted") {
-      const entry = parseCitationEntries(citation).at(-1);
-      latestCitation = {
-        text: entry?.quote ?? normalizeCitationText(submittedSelection.text),
+      citedSelections = citedSelections.filter(
+        (cited) =>
+          elementIsConnected(cited.anchorElement) &&
+          !(cited.text === entry.quote && cited.composerInput === submittedSelection.composerInput),
+      );
+      citedSelections.push({
+        text: entry.quote,
         range: submittedSelection.range,
         anchorElement: submittedSelection.anchorElement,
         composerInput: submittedSelection.composerInput,
-      };
+      });
       closePanel();
       return;
     }
@@ -944,7 +784,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     }
 
     void options
-      .copyFallback(citation)
+      .copyFallback(formatCitationEntry(entry))
       .then(() => {
         closePanel();
         showToast(
@@ -1010,50 +850,38 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     }
   };
   const handleCitationAttachmentClick: DomListener = (event) => {
-    const target = event.target ?? null;
-    if (isCitationRemoveTarget(target)) {
-      if (findComposerInputNearElement(target?.parentElement ?? null)) {
-        window.setTimeout(clearStaleLatestCitation, 0);
-      }
-      return;
-    }
-    if (!isCitationPillTarget(target)) return;
-
-    const pill = target ? target.closest(CITATION_PILL_SELECTOR) : null;
-    const input = findComposerInputNearElement(
-      pill?.parentElement ?? pill,
-      pill?.getBoundingClientRect() ?? null,
-    );
-    const bridge = input ? findComposerAttachmentBridge(input) : null;
-    const mappedAttachment = bridge && attachmentForPill(pill, bridge);
-    const attachment = isCitationComposerAttachment(mappedAttachment)
-      ? mappedAttachment
-      : isCitationPillTarget(target)
-        ? bridge?.attachments.find(isCitationComposerAttachment)
-        : null;
-
-    if (!attachment || !input) return;
+    const pill = event.target?.closest(CITATION_PILL_SELECTOR) ?? null;
+    const attachment = pill ? citationAttachmentForPill(pill) : null;
+    if (!pill || !attachment) return;
 
     event.preventDefault();
     event.stopPropagation();
 
-    if (bridge) migrateCitationAttachments(bridge);
+    const input = findComposerInputNearElement(pill.parentElement ?? pill, pill.getBoundingClientRect());
+    const bridge = input ? findComposerAttachmentBridge(input) : null;
+    if (bridge) migrateBridgeCitationAttachments(bridge);
 
-    const normalizedAttachment = normalizeCitationComposerAttachment(attachment);
-    const entry = attachmentCitations(normalizedAttachment).at(-1);
-    const canRestoreSelection =
-      latestCitation?.composerInput === input && latestCitation.text === entry?.quote;
+    // Each click on the pill goes to the previous citation, starting at the latest.
+    const citations = attachmentCitations(attachment);
+    const citationsKey = JSON.stringify(citations);
+    const index =
+      pillCursor?.citationsKey === citationsKey
+        ? (pillCursor.index - 1 + citations.length) % citations.length
+        : citations.length - 1;
+    pillCursor = { citationsKey, index };
+    const entry = citations[index];
+    const cited = citedSelections.find(
+      (selection) => selection.composerInput === input && selection.text === entry?.quote,
+    );
     suppressSelectionChanges();
 
     if (
       !entry ||
-      !highlightCitationText(
-        entry.quote,
-        canRestoreSelection ? latestCitation?.range ?? null : null,
-        canRestoreSelection ? latestCitation?.anchorElement ?? null : null,
-      )
+      !highlightCitationText(entry.quote, cited?.range ?? null, cited?.anchorElement ?? null)
     ) {
       showToast("Could not find the cited text in this conversation.", true);
+    } else if (citations.length > 1) {
+      showToast(`Citation ${index + 1} of ${citations.length}`);
     }
   };
   const handleWindowChange = (): void => {
