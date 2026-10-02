@@ -103,7 +103,7 @@ paseo plugin install /absolute/path/to/paseo-plugin-cite
 paseo plugin reload paseo-cite
 ```
 
-The test suite covers citation formatting, multiple citations, delimiter-like quote and comment content, size limits, how new citations merge with existing attachments, and the committed React fiber lookup against React DOM.
+The test suite covers citation formatting, multiple citations, delimiter-like quote and comment content, size limits, how new citations merge with existing attachments, the committed React fiber lookup against React DOM, and the cite button against jsdom.
 
 ## Project layout
 
@@ -116,8 +116,11 @@ The test suite covers citation formatting, multiple citations, delimiter-like qu
 │   ├── citation-format.test.mjs      Formatting tests
 │   ├── react-fiber.ts                Committed React fiber lookup for the composer bridge
 │   ├── react-fiber.test.mjs          Fiber lookup tests against React DOM
+│   ├── web.test.mjs                  Overlay tests against jsdom
 │   └── web.ts                        Web selection, composer bridge, and overlay UI
-├── test/resolve-ts.mjs               Node import hook for extensionless TypeScript imports
+├── test/
+│   ├── react-native-stub.mjs         react-native stub for tests
+│   └── resolve-ts.mjs                Node import hook for TypeScript imports and the stub
 ├── index.client.tsx                  Paseo client entry point
 ├── paseo-plugin.json                 Paseo plugin manifest
 ├── package.json                      Development scripts and SDK versions

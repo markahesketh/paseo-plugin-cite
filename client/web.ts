@@ -40,6 +40,9 @@ interface DomEvent {
 
 type DomListener = (event: DomEvent) => void;
 
+// querySelectorAll returns a NodeList, which has no array methods.
+type DomNodeList<T> = ArrayLike<T> & Iterable<T>;
+
 interface DomElement {
   id: string;
   isConnected?: boolean;
@@ -53,7 +56,7 @@ interface DomElement {
   contains(node: unknown): boolean;
   getBoundingClientRect(): DomRect;
   querySelector(selector: string): DomElement | null;
-  querySelectorAll(selector: string): DomElement[];
+  querySelectorAll(selector: string): DomNodeList<DomElement>;
   scrollIntoView(options?: { behavior?: string; block?: string }): void;
   closest(selector: string): DomElement | null;
   getAttribute(name: string): string | null;
@@ -108,7 +111,7 @@ interface DomDocument {
   createRange(): DomRange;
   getElementById(id: string): DomElement | null;
   querySelector(selector: string): DomElement | null;
-  querySelectorAll(selector: string): DomElement[];
+  querySelectorAll(selector: string): DomNodeList<DomElement>;
   addEventListener(type: string, listener: DomListener, options?: boolean): void;
   removeEventListener(type: string, listener: DomListener, options?: boolean): void;
 }
@@ -151,6 +154,13 @@ const COMPOSER_INPUT_SELECTOR = '[data-testid="message-input-root"] textarea';
 const EXCLUDED_SELECTOR =
   '[data-testid="message-input-root"], [data-testid="paseo-cite-overlay"], textarea, input';
 const SELECTION_CHANGE_SUPPRESSION_MS = 250;
+
+function isBrowserRuntime(): boolean {
+  return (
+    Platform.OS === "web" ||
+    (typeof document !== "undefined" && typeof window !== "undefined")
+  );
+}
 
 interface CitationOverlayOptions {
   copyFallback(text: string): Promise<void>;
@@ -208,10 +218,11 @@ function elementIsVisible(element: DomElement): boolean {
 }
 
 function nearestComposerInput(
-  candidates: DomTextInput[],
+  candidates: DomNodeList<DomTextInput>,
   referenceRect: DomRect | null,
 ): DomTextInput | null {
-  return candidates.filter(elementIsVisible).reduce<DomTextInput | null>((closest, candidate) => {
+  const visibleCandidates = Array.from(candidates).filter(elementIsVisible);
+  return visibleCandidates.reduce<DomTextInput | null>((closest, candidate) => {
     if (!closest || !referenceRect) return closest ?? candidate;
     return rectDistance(referenceRect, candidate.getBoundingClientRect()) <
       rectDistance(referenceRect, closest.getBoundingClientRect())
@@ -226,7 +237,7 @@ function findComposerInputNearElement(
 ): DomTextInput | null {
   let current = element;
   while (current) {
-    const inputs = current.querySelectorAll(COMPOSER_INPUT_SELECTOR) as DomTextInput[];
+    const inputs = current.querySelectorAll(COMPOSER_INPUT_SELECTOR) as DomNodeList<DomTextInput>;
     const input = nearestComposerInput(inputs, referenceRect);
     if (input) return input;
     current = current.parentElement;
@@ -257,7 +268,7 @@ function findComposerInputForSelection(
   const nearbyInput = findComposerInputNearElement(anchorElement, selectionRect);
   if (nearbyInput) return nearbyInput;
 
-  const candidates = document.querySelectorAll(COMPOSER_INPUT_SELECTOR) as DomTextInput[];
+  const candidates = document.querySelectorAll(COMPOSER_INPUT_SELECTOR) as DomNodeList<DomTextInput>;
   return nearestComposerInput(candidates, selectionRect);
 }
 
@@ -454,7 +465,7 @@ export function appendCitationToComposer(
   entry: CitationEntry,
   preferredInput: DomTextInput | null = null,
 ): CitationInsertResult {
-  if (Platform.OS !== "web") {
+  if (!isBrowserRuntime()) {
     return "not-web";
   }
 
@@ -462,7 +473,7 @@ export function appendCitationToComposer(
     (preferredInput && elementIsConnected(preferredInput) && elementIsVisible(preferredInput)
       ? preferredInput
       : null) ??
-    nearestComposerInput(document.querySelectorAll(COMPOSER_INPUT_SELECTOR) as DomTextInput[], null);
+    nearestComposerInput(document.querySelectorAll(COMPOSER_INPUT_SELECTOR) as DomNodeList<DomTextInput>, null);
   if (!input) {
     return "composer-not-found";
   }
@@ -577,7 +588,7 @@ function styleActionButton(button: DomElement, primary: boolean): void {
 }
 
 export function startCitationOverlay(options: CitationOverlayOptions): () => void {
-  if (Platform.OS !== "web") {
+  if (!isBrowserRuntime()) {
     return () => {};
   }
 
@@ -663,6 +674,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   let previousFocusedElement: DomElement | null = null;
   let toastTimer: unknown = null;
   let ignoreSelectionChangesTimer: unknown = null;
+  let selectionCommitTimer: unknown = null;
 
   const suppressSelectionChanges = (): void => {
     if (ignoreSelectionChangesTimer !== null) window.clearTimeout(ignoreSelectionChangesTimer);
@@ -705,7 +717,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     commentInput.focus();
   };
 
-  const focusablePanelElements = (): DomElement[] =>
+  const focusablePanelElements = (): DomNodeList<DomElement> =>
     panel.querySelectorAll("button, textarea, [tabindex]");
 
   const updateSubmitButton = (): void => {
@@ -731,6 +743,18 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     }
     positionElement(citeButton, currentSelectionRect(nextSelection), 30);
     citeButton.style.display = "block";
+  };
+
+  // selectionchange does not always fire after a pointer or key selection ends.
+  const scheduleSelectionChange: DomListener = (event) => {
+    const target = event.target ?? null;
+    if (target && root.contains(target)) return;
+
+    if (selectionCommitTimer !== null) window.clearTimeout(selectionCommitTimer);
+    selectionCommitTimer = window.setTimeout(() => {
+      selectionCommitTimer = null;
+      handleSelectionChange();
+    }, 0);
   };
 
   const handleCiteButtonMouseDown: DomListener = (event) => {
@@ -895,6 +919,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   };
 
   document.addEventListener("selectionchange", handleSelectionChange);
+  document.addEventListener("pointerup", scheduleSelectionChange, true);
+  document.addEventListener("keyup", scheduleSelectionChange, true);
   window.addEventListener("resize", handleWindowChange);
   window.addEventListener("scroll", handleWindowChange, true);
   citeButton.addEventListener("mousedown", handleCiteButtonMouseDown);
@@ -911,6 +937,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
 
   const cleanup = (): void => {
     document.removeEventListener("selectionchange", handleSelectionChange);
+    document.removeEventListener("pointerup", scheduleSelectionChange, true);
+    document.removeEventListener("keyup", scheduleSelectionChange, true);
     window.removeEventListener("resize", handleWindowChange);
     window.removeEventListener("scroll", handleWindowChange, true);
     citeButton.removeEventListener("mousedown", handleCiteButtonMouseDown);
@@ -926,6 +954,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     document.removeEventListener("click", handleCitationAttachmentClick, true);
     if (toastTimer !== null) window.clearTimeout(toastTimer);
     if (ignoreSelectionChangesTimer !== null) window.clearTimeout(ignoreSelectionChangesTimer);
+    if (selectionCommitTimer !== null) window.clearTimeout(selectionCommitTimer);
     if (activeOverlayCleanup === cleanup) activeOverlayCleanup = null;
     root.remove();
   };
