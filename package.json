@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types client/citation-format.test.mjs"
+    "test": "node --test --experimental-strip-types client/*.test.mjs"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.9.1",

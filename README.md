@@ -112,6 +112,8 @@ The test suite covers citation formatting, multiple citations, delimiter-like co
 ├── client/
 │   ├── citation-format.ts       Citation model and text compatibility format
 │   ├── citation-format.test.mjs Formatting tests
+│   ├── react-fiber.ts           Committed React fiber lookup for the composer bridge
+│   ├── react-fiber.test.mjs     Fiber lookup tests
 │   └── web.ts                   Web selection, composer bridge, and overlay UI
 ├── index.client.tsx             Paseo client entry point
 ├── paseo-plugin.json            Paseo plugin manifest

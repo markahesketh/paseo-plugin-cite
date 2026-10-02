@@ -1,6 +1,8 @@
 import { Platform } from "react-native";
 
 import type { CitationEntry } from "./citation-format";
+import { findCommittedFiber, findReactFiber } from "./react-fiber";
+import type { ReactFiberNode } from "./react-fiber";
 
 import {
   MAX_CITATION_TEXT_LENGTH,
@@ -157,11 +159,6 @@ interface SelectionSnapshot {
   range: DomRange;
   anchorElement: DomElement | null;
   composerInput: DomTextInput | null;
-}
-
-interface ReactFiberNode {
-  return?: ReactFiberNode | null;
-  memoizedProps?: Record<string, unknown>;
 }
 
 interface CitationComposerAttachment {
@@ -355,18 +352,9 @@ function replaceNativeInputValue(input: DomTextInput, value: string): void {
   dispatchInputEvent(input);
 }
 
-function findReactFiber(element: DomElement): ReactFiberNode | null {
-  const properties = element as unknown as Record<string, unknown>;
-  const fiberProperty = Object.getOwnPropertyNames(properties).find(
-    (property) =>
-      property.startsWith("__reactFiber$") || property.startsWith("__reactInternalInstance$"),
-  );
-  const fiber = fiberProperty ? properties[fiberProperty] : null;
-  return fiber && typeof fiber === "object" ? (fiber as ReactFiberNode) : null;
-}
-
 function findComposerAttachmentBridge(input: DomElement): ComposerAttachmentBridge | null {
-  let fiber = findReactFiber(input);
+  const cachedFiber = findReactFiber(input);
+  let fiber: ReactFiberNode | null = cachedFiber ? findCommittedFiber(cachedFiber) : null;
   while (fiber) {
     const props = fiber.memoizedProps;
     if (
