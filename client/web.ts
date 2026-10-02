@@ -10,6 +10,7 @@ import {
   containsCitationEntry,
   isCitationComposerAttachment,
   normalizeCitationAttachments,
+  replaceCitationInAttachments,
 } from "./citation-attachment";
 import {
   MAX_CITATION_TEXT_LENGTH,
@@ -87,7 +88,9 @@ interface DomRange {
   startOffset: number;
   endContainer: DomElement;
   endOffset: number;
+  cloneRange(): DomRange;
   getBoundingClientRect(): DomRect;
+  getClientRects(): ArrayLike<DomRect>;
   setStart(container: DomElement, offset: number): void;
   setEnd(container: DomElement, offset: number): void;
   toString(): string;
@@ -177,6 +180,13 @@ interface SelectionSnapshot {
 interface ComposerAttachmentBridge {
   attachments: unknown[];
   setAttachments(nextAttachments: unknown[]): void;
+}
+
+interface EditingCitation {
+  entry: CitationEntry;
+  bridgeInput: DomTextInput;
+  pill: DomElement;
+  range: DomRange | null;
 }
 
 interface CitedSelection {
@@ -323,9 +333,14 @@ function positionElement(element: DomElement, rect: DomRect, height: number): vo
   element.style.top = `${clamp(top, 8, Math.max(8, window.innerHeight - height - 8))}px`;
 }
 
+function rectIsEmpty(rect: DomRect): boolean {
+  return rect.top === 0 && rect.left === 0 && rect.right === 0 && rect.bottom === 0;
+}
+
 function positionPanel(element: DomElement, rect: DomRect): void {
   const width = 560;
-  const height = 214;
+  const measured = element.getBoundingClientRect();
+  const height = measured.bottom - measured.top || 214;
   const left = clamp(rect.left, 8, Math.max(8, window.innerWidth - width - 8));
   const top = rect.bottom + 8 + height <= window.innerHeight ? rect.bottom + 8 : rect.top - height - 8;
   element.style.left = `${left}px`;
@@ -616,6 +631,21 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   stylePanel(panel);
   panel.style.display = "none";
 
+  // Shows the full quote when you edit a citation, because the pill shows only part of it.
+  const quoteText = addChild(panel, document.createElement("div"));
+  setStyles(quoteText, {
+    display: "none",
+    margin: "0 0 10px",
+    padding: "2px 0 2px 10px",
+    maxHeight: "72px",
+    overflow: "auto",
+    borderLeft: `3px solid ${BORDER}`,
+    color: MUTED_FOREGROUND,
+    fontSize: "13px",
+    lineHeight: "1.4",
+    whiteSpace: "pre-wrap",
+  });
+
   const commentInput = addChild(panel, document.createElement("textarea")) as DomTextInput;
   commentInput.setAttribute("aria-label", "Citation comment");
   commentInput.setAttribute("placeholder", "Leave a comment");
@@ -658,6 +688,10 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     lineHeight: "18px",
   });
 
+  // The page selection moves into the comment box when it gets focus, so draw the
+  // highlight for an edited citation separately.
+  const highlightLayer = addChild(root, document.createElement("div"));
+
   document.body.appendChild(root);
 
   const migrateExistingCitationAttachments = (): void => {
@@ -669,6 +703,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   migrateExistingCitationAttachments();
 
   let activeSelection: SelectionSnapshot | null = null;
+  let editingCitation: EditingCitation | null = null;
   let citedSelections: CitedSelection[] = [];
   let previousFocusedElement: DomElement | null = null;
   let toastTimer: unknown = null;
@@ -693,27 +728,69 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     }, 2600);
   };
 
+  const drawEditHighlight = (): void => {
+    highlightLayer.textContent = "";
+    const range = editingCitation?.range;
+    if (!range || !elementIsConnected(elementForNode(range.commonAncestorContainer))) return;
+    for (const rect of Array.from(range.getClientRects())) {
+      const box = addChild(highlightLayer, document.createElement("div"));
+      setStyles(box, {
+        position: "fixed",
+        left: `${rect.left}px`,
+        top: `${rect.top}px`,
+        width: `${rect.right - rect.left}px`,
+        height: `${rect.bottom - rect.top}px`,
+        background: "var(--colors-accent-muted, rgb(32 116 74 / 25%))",
+        borderRadius: "2px",
+      });
+    }
+  };
+
+  const panelAnchorRect = (): DomRect | null => {
+    if (activeSelection) return currentSelectionRect(activeSelection);
+    if (!editingCitation) return null;
+    const range = editingCitation.range;
+    if (range && elementIsConnected(elementForNode(range.commonAncestorContainer))) {
+      const rect = range.getBoundingClientRect();
+      if (!rectIsEmpty(rect)) return rect;
+    }
+    return editingCitation.pill.getBoundingClientRect();
+  };
+
   const closePanel = (): void => {
     panel.style.display = "none";
     citeButton.style.display = "none";
     activeSelection = null;
+    editingCitation = null;
+    highlightLayer.textContent = "";
 
     const elementToRestore = previousFocusedElement;
     previousFocusedElement = null;
     if (elementIsConnected(elementToRestore)) elementToRestore?.focus();
   };
 
-  const showPanel = (): void => {
-    if (!activeSelection) return;
+  const openPanel = (comment: string, quote: string | null): void => {
+    const rect = panelAnchorRect();
+    if (!rect) return;
     previousFocusedElement = document.activeElement;
-    positionPanel(panel, currentSelectionRect(activeSelection));
     citeButton.style.display = "none";
+    panel.setAttribute(
+      "aria-label",
+      quote === null ? "Add a citation comment" : "Edit the citation comment",
+    );
+    quoteText.textContent = quote ?? "";
+    quoteText.style.display = quote === null ? "none" : "block";
+    submitButton.textContent = quote === null ? "Comment" : "Save";
+    commentInput.value = comment;
+    updateSubmitButton();
     panel.style.display = "block";
-    commentInput.value = "";
-    submitButton.setAttribute("disabled", "");
-    submitButton.style.opacity = "0.48";
-    submitButton.style.cursor = "default";
+    positionPanel(panel, rect);
     commentInput.focus();
+    commentInput.setSelectionRange(comment.length, comment.length);
+  };
+
+  const showPanel = (): void => {
+    if (activeSelection) openPanel("", null);
   };
 
   const focusablePanelElements = (): DomNodeList<DomElement> =>
@@ -768,9 +845,41 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     event.preventDefault();
     closePanel();
   };
+  const saveEditedCitation = (editing: EditingCitation): void => {
+    const entry = createCitationEntry(editing.entry.quote, commentInput.value);
+    if (!entry) {
+      showToast("This comment is too large to save.", true);
+      return;
+    }
+    if (entry.comment === editing.entry.comment) {
+      closePanel();
+      return;
+    }
+
+    const bridge = findComposerAttachmentBridge(editing.bridgeInput);
+    const result = bridge
+      ? replaceCitationInAttachments(bridge.attachments, editing.entry, entry)
+      : "missing";
+    if (result === "duplicate") {
+      showToast("This citation is already in the composer.");
+      return;
+    }
+    closePanel();
+    if (result === "missing" || !bridge) {
+      showToast("This citation is no longer in the composer.", true);
+      return;
+    }
+    bridge.setAttachments(result);
+  };
+
   const handleSubmit: DomListener = (event) => {
     event.preventDefault();
-    if (!activeSelection || !commentInput.value.trim()) return;
+    if (!commentInput.value.trim()) return;
+    if (editingCitation) {
+      saveEditedCitation(editingCitation);
+      return;
+    }
+    if (!activeSelection) return;
 
     const submittedSelection = activeSelection;
     const entry = createCitationEntry(submittedSelection.text, commentInput.value);
@@ -880,6 +989,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     event.preventDefault();
     event.stopPropagation();
 
+    closePanel();
     const input = findComposerInputNearElement(pill.parentElement ?? pill, pill.getBoundingClientRect());
     const bridge = input ? findComposerAttachmentBridge(input) : null;
     if (bridge) migrateBridgeCitationAttachments(bridge);
@@ -891,18 +1001,28 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     );
     suppressSelectionChanges();
 
-    if (
-      !entry ||
-      !highlightCitationText(entry.quote, cited?.range ?? null, cited?.anchorElement ?? null)
-    ) {
-      showToast("Could not find the cited text in this conversation.", true);
-    }
+    if (!entry) return;
+    const found = highlightCitationText(
+      entry.quote,
+      cited?.range ?? null,
+      cited?.anchorElement ?? null,
+    );
+    const selection = window.getSelection();
+    const range =
+      found && selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
+    if (!found) showToast("Could not find the cited text in this conversation.", true);
+    if (!input || !bridge) return;
+
+    editingCitation = { entry, bridgeInput: input, pill, range };
+    drawEditHighlight();
+    openPanel(entry.comment, entry.quote);
   };
   const handleWindowChange = (): void => {
-    if (!activeSelection) return;
-    const rect = currentSelectionRect(activeSelection);
+    const rect = panelAnchorRect();
+    if (!rect) return;
     if (panel.style.display === "block") {
       positionPanel(panel, rect);
+      drawEditHighlight();
     } else {
       positionElement(citeButton, rect, 30);
     }

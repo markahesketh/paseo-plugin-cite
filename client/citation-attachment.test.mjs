@@ -6,6 +6,7 @@ import {
   attachmentCitations,
   citationAttachmentForEntry,
   normalizeCitationAttachments,
+  replaceCitationInAttachments,
 } from "./citation-attachment.ts";
 
 function combinedCitationAttachment(citations) {
@@ -64,4 +65,35 @@ test("citation pill shows the comment and quote cut to a short length", () => {
 
   assert.equal(attachment.item.title, "a comment that is also much longer than the pil…");
   assert.equal(attachment.item.identifier, "“a quote that is much longer than the pi…”");
+});
+
+test("edited citation replaces its attachment in the same position", () => {
+  const first = citationAttachmentForEntry({ quote: "one", comment: "first" });
+  const second = citationAttachmentForEntry({ quote: "two", comment: "second" });
+
+  const next = replaceCitationInAttachments(
+    [first, second],
+    { quote: "one", comment: "first" },
+    { quote: "one", comment: "changed" },
+  );
+
+  assert.deepEqual(citations(next), [
+    [{ quote: "one", comment: "changed" }],
+    [{ quote: "two", comment: "second" }],
+  ]);
+});
+
+test("edit that matches another citation is a duplicate", () => {
+  const attachments = [
+    citationAttachmentForEntry({ quote: "one", comment: "first" }),
+    citationAttachmentForEntry({ quote: "one", comment: "second" }),
+  ];
+
+  const next = replaceCitationInAttachments(
+    attachments,
+    { quote: "one", comment: "first" },
+    { quote: "one", comment: "second" },
+  );
+
+  assert.equal(next, "duplicate");
 });

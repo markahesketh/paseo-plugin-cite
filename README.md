@@ -14,7 +14,7 @@ Select part of an assistant reply, choose **Cite**, write a comment, and submit 
 - Adds each citation to the composer as its own attachment, so you can remove each one separately.
 - Shows a short form of the comment and the quote on each attachment.
 - Prevents duplicate citations.
-- Scrolls to and highlights the cited text when you select a citation attachment.
+- Scrolls to and highlights the cited text when you select a citation attachment, and opens its comment for editing.
 - Copies a formatted citation when the composer attachment bridge is unavailable.
 
 ## Requirements
@@ -54,7 +54,9 @@ Check this claim again
 Citation “The cache is cleared on each…”
 ```
 
-Select a card to scroll to and highlight its cited text in the current conversation. Remove a card to remove only that citation. Combined citation cards from earlier versions are split into one card for each citation.
+Select a card to scroll to and highlight its cited text in the current conversation. The comment form opens with the full quote and the current comment. Change the comment and press `Enter` or select **Save**. The card stays in the same position. Press `Escape` or select **Cancel** to close the form with no change. If the cited text is no longer in the conversation, the form opens above the card.
+
+Remove a card to remove only that citation. Combined citation cards from earlier versions are split into one card for each citation.
 
 The text sent with each citation has this form:
 
@@ -103,7 +105,7 @@ paseo plugin install /absolute/path/to/paseo-plugin-cite
 paseo plugin reload paseo-cite
 ```
 
-The test suite covers citation formatting, multiple citations, delimiter-like quote and comment content, size limits, one attachment for each citation, the split of combined attachments, the card text, the committed React fiber lookup against React DOM, and the cite button against jsdom.
+The test suite covers citation formatting, multiple citations, delimiter-like quote and comment content, size limits, one attachment for each citation, the split of combined attachments, the card text, in-place edits, the committed React fiber lookup against React DOM, and the cite button and comment edit flow against jsdom and React DOM.
 
 ## Project layout
 

@@ -148,3 +148,26 @@ export function addCitationToAttachments(
   if (containsCitationEntry(existing, entry)) return "duplicate";
   return [...normalized, citationAttachmentForEntry(entry)];
 }
+
+// Replaces the attachment for one entry in place, so that the pill order stays the same.
+export function replaceCitationInAttachments(
+  attachments: unknown[],
+  previous: CitationEntry,
+  next: CitationEntry,
+): unknown[] | "duplicate" | "missing" {
+  const normalized = normalizeCitationAttachments(attachments) ?? attachments;
+  const holdsPrevious = (attachment: unknown): boolean =>
+    isCitationComposerAttachment(attachment) &&
+    containsCitationEntry(attachmentCitations(attachment), previous);
+  const index = normalized.findIndex(holdsPrevious);
+  if (index < 0) return "missing";
+
+  const otherEntries = normalized
+    .filter((attachment, otherIndex) => otherIndex !== index)
+    .filter(isCitationComposerAttachment)
+    .flatMap(attachmentCitations);
+  if (containsCitationEntry(otherEntries, next)) return "duplicate";
+  return normalized.map((attachment, otherIndex) =>
+    otherIndex === index ? citationAttachmentForEntry(next) : attachment,
+  );
+}
