@@ -4,10 +4,8 @@ import { findCommittedFiberPath } from "./react-fiber";
 
 import {
   addCitationToAttachments,
-  attachmentCitations,
-  containsCitationEntry,
+  citationEntryForAttachment,
   isCitationComposerAttachment,
-  normalizeCitationAttachments,
   replaceCitationInAttachments,
 } from "./citation-attachment";
 import {
@@ -15,7 +13,6 @@ import {
   createCitationEntry,
   formatCitationEntry,
   normalizeCitationText,
-  parseCitationEntries,
 } from "./citation-format";
 
 type CitationInsertResult =
@@ -281,11 +278,6 @@ function findComposerAttachmentBridge(input: Element): ComposerAttachmentBridge 
   return null;
 }
 
-function migrateBridgeCitationAttachments(bridge: ComposerAttachmentBridge): void {
-  const nextAttachments = normalizeCitationAttachments(bridge.attachments);
-  if (nextAttachments) bridge.setAttachments(() => nextAttachments);
-}
-
 // Paseo renders each plugin pill with its own attachment as the "attachment" prop.
 function citationAttachmentForPill(pill: Element): CitationComposerAttachment | null {
   for (const fiber of findCommittedFiberPath(pill) ?? []) {
@@ -399,7 +391,6 @@ export function appendCitationToComposer(
     return attachmentResult;
   }
 
-  if (containsCitationEntry(parseCitationEntries(input.value), entry)) return "duplicate";
   const formattedCitation = formatCitationEntry(entry);
   const currentDraft = input.value.trimEnd();
   const nextDraft = currentDraft ? `${currentDraft}\n\n${formattedCitation}` : formattedCitation;
@@ -599,14 +590,6 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   root.append(highlightLayer);
 
   document.body.appendChild(root);
-
-  const migrateExistingCitationAttachments = (): void => {
-    for (const input of document.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR)) {
-      const bridge = findComposerAttachmentBridge(input);
-      if (bridge) migrateBridgeCitationAttachments(bridge);
-    }
-  };
-  migrateExistingCitationAttachments();
 
   let activeSelection: SelectionSnapshot | null = null;
   let editingCitation: EditingCitation | null = null;
@@ -900,10 +883,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     closePanel();
     const input = findComposerInputNearElement(pill.parentElement ?? pill, pill.getBoundingClientRect());
     const bridge = input ? findComposerAttachmentBridge(input) : null;
-    if (bridge) migrateBridgeCitationAttachments(bridge);
 
-    // A combined attachment from an earlier version goes to its latest citation.
-    const entry = attachmentCitations(attachment).at(-1);
+    const entry = citationEntryForAttachment(attachment);
     const cited = citedSelections.find(
       (selection) => selection.composerInput === input && selection.text === entry?.quote,
     );

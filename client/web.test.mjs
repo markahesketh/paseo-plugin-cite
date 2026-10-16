@@ -18,7 +18,7 @@ window.find = () => false;
 
 const { act, createElement: h, useState } = await import("react");
 const { createRoot } = await import("react-dom/client");
-const { citationAttachmentForEntry } = await import("./citation-attachment.ts");
+const { citationAttachmentForEntry, citationEntryForAttachment } = await import("./citation-attachment.ts");
 const { startCitationOverlay } = await import("./web.ts");
 
 test("adding a citation uses the functional attachment updater", async () => {
@@ -67,9 +67,10 @@ test("adding a citation uses the functional attachment updater", async () => {
     await act(() => panel.dispatchEvent(new window.Event("submit", { cancelable: true })));
 
     assert.equal(currentAttachments.length, 1);
-    assert.deepEqual(currentAttachments[0].citations, [
-      { quote: "The answer is forty two.", comment: "Check this claim." },
-    ]);
+    assert.deepEqual(citationEntryForAttachment(currentAttachments[0]), {
+      quote: "The answer is forty two.",
+      comment: "Check this claim.",
+    });
   } finally {
     window.getSelection().removeAllRanges();
     stop();
@@ -117,8 +118,11 @@ test("editing a citation pill changes only that citation", async () => {
 
   assert.equal(panel.style.display, "none");
   assert.deepEqual(
-    currentAttachments.map((attachment) => attachment.citations),
-    [[{ quote: "one", comment: "changed" }], [{ quote: "two", comment: "second" }]],
+    currentAttachments.map(citationEntryForAttachment),
+    [
+      { quote: "one", comment: "changed" },
+      { quote: "two", comment: "second" },
+    ],
   );
   stop();
   await act(() => root.unmount());

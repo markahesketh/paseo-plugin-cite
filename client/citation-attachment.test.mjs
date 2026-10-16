@@ -3,24 +3,13 @@ import test from "node:test";
 
 import {
   addCitationToAttachments,
-  attachmentCitations,
   citationAttachmentForEntry,
-  normalizeCitationAttachments,
+  citationEntryForAttachment,
   replaceCitationInAttachments,
 } from "./citation-attachment.ts";
+import { formatCitationEntry } from "./citation-format.ts";
 
-function combinedCitationAttachment(citations) {
-  return {
-    kind: "plugin_resource",
-    pluginId: "paseo-cite",
-    sourceId: "citations",
-    citations,
-    item: { text: "" },
-  };
-}
-
-const citations = (attachments) =>
-  attachments.map((attachment) => attachmentCitations(attachment));
+const entries = (attachments) => attachments.map(citationEntryForAttachment);
 
 test("each new citation gets its own attachment after the other attachments", () => {
   const other = { kind: "plugin_resource", pluginId: "other", sourceId: "issues", item: { text: "" } };
@@ -30,31 +19,27 @@ test("each new citation gets its own attachment after the other attachments", ()
 
   assert.equal(next[0], first);
   assert.equal(next[1], other);
-  assert.deepEqual(attachmentCitations(next[2]), [{ quote: "two", comment: "second" }]);
+  assert.deepEqual(citationEntryForAttachment(next[2]), { quote: "two", comment: "second" });
 });
 
-test("citation already in an attachment is a duplicate", () => {
-  const attachments = [citationAttachmentForEntry({ quote: "one", comment: "first" })];
+test("restored attachment without a citations key is recognised and deduplicated", () => {
+  const restored = {
+    kind: "plugin_resource",
+    pluginId: "paseo-cite",
+    sourceId: "citations",
+    sourceTitle: "Citation",
+    sourceIcon: "MessageSquareCode",
+    item: {
+      id: "conversation-citation-1",
+      identifier: "“one”",
+      title: "first",
+      url: "paseo-cite://citation",
+      text: formatCitationEntry({ quote: "one", comment: "first" }),
+      resourceType: "conversation-citation",
+    },
+  };
 
-  assert.equal(addCitationToAttachments(attachments, { quote: "one", comment: "first" }), "duplicate");
-});
-
-test("combined attachments split into one attachment per unique citation", () => {
-  const attachments = [
-    combinedCitationAttachment([
-      { quote: "one", comment: "first" },
-      { quote: "two", comment: "second" },
-    ]),
-    combinedCitationAttachment([{ quote: "one", comment: "first" }]),
-  ];
-
-  const next = normalizeCitationAttachments(attachments);
-
-  assert.deepEqual(citations(next), [
-    [{ quote: "one", comment: "first" }],
-    [{ quote: "two", comment: "second" }],
-  ]);
-  assert.equal(normalizeCitationAttachments(next), null);
+  assert.equal(addCitationToAttachments([restored], { quote: "one", comment: "first" }), "duplicate");
 });
 
 test("citation pill shows the comment and quote cut to a short length", () => {
@@ -77,9 +62,9 @@ test("edited citation replaces its attachment in the same position", () => {
     { quote: "one", comment: "changed" },
   );
 
-  assert.deepEqual(citations(next), [
-    [{ quote: "one", comment: "changed" }],
-    [{ quote: "two", comment: "second" }],
+  assert.deepEqual(entries(next), [
+    { quote: "one", comment: "changed" },
+    { quote: "two", comment: "second" },
   ]);
 });
 
