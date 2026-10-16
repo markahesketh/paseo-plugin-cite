@@ -52,9 +52,9 @@ export function rangeShowsQuote(range: Range, quote: string): boolean {
   return rangeIsConnected(range) && withoutWhitespace(range.toString()) === withoutWhitespace(quote);
 }
 
-export function findQuoteRange(scope: Node, quote: string): Range | null {
+function findQuoteRanges(scope: Node, quote: string): Range[] {
   const needle = withoutWhitespace(quote);
-  if (!needle) return null;
+  if (!needle) return [];
 
   const { NodeFilter } = window;
   const walker = document.createTreeWalker(scope, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
@@ -79,13 +79,45 @@ export function findQuoteRange(scope: Node, quote: string): Range | null {
     }
   }
 
-  const start = haystack.indexOf(needle);
-  if (start < 0) return null;
-  const end = start + needle.length - 1;
-  const range = document.createRange();
-  range.setStart(nodes[start], offsets[start]);
-  range.setEnd(nodes[end], offsets[end] + 1);
-  return range;
+  const ranges: Range[] = [];
+  for (
+    let start = haystack.indexOf(needle);
+    start >= 0;
+    start = haystack.indexOf(needle, start + needle.length)
+  ) {
+    const end = start + needle.length - 1;
+    const range = document.createRange();
+    range.setStart(nodes[start], offsets[start]);
+    range.setEnd(nodes[end], offsets[end] + 1);
+    ranges.push(range);
+  }
+  return ranges;
+}
+
+export function findQuoteRange(scope: Node, quote: string): Range | null {
+  return findQuoteRanges(scope, quote)[0] ?? null;
+}
+
+// A pane holds one composer and its conversation. Another composer means another pane.
+function paneOf(composer: Element): Element {
+  let pane = composer;
+  for (
+    let parent = composer.parentElement;
+    parent && parent !== document.documentElement;
+    parent = parent.parentElement
+  ) {
+    if (parent.querySelectorAll(COMPOSER_ROOT_SELECTOR).length > 1) break;
+    pane = parent;
+  }
+  return pane;
+}
+
+function distanceFrom(composer: Element, node: Node): number {
+  let distance = 0;
+  for (let scope: Node | null = composer; scope && !scope.contains(node); scope = scope.parentNode) {
+    distance += 1;
+  }
+  return distance;
 }
 
 export function findQuoteNearComposer(
@@ -95,15 +127,14 @@ export function findQuoteNearComposer(
   const composer = input?.closest(COMPOSER_ROOT_SELECTOR);
   if (!composer) return findQuoteRange(document.body, quote);
 
-  for (
-    let scope = composer.parentElement;
-    scope && document.body.contains(scope);
-    scope = scope.parentElement
-  ) {
-    if (scope.querySelectorAll(COMPOSER_ROOT_SELECTOR).length > 1) return null;
-    if (scope.childNodes.length === 1) continue;
-    const range = findQuoteRange(scope, quote);
-    if (range) return range;
+  let nearest: Range | null = null;
+  let nearestDistance = Infinity;
+  for (const range of findQuoteRanges(paneOf(composer), quote)) {
+    const distance = distanceFrom(composer, range.startContainer);
+    if (distance < nearestDistance) {
+      nearest = range;
+      nearestDistance = distance;
+    }
   }
-  return null;
+  return nearest;
 }
