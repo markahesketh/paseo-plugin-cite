@@ -88,11 +88,13 @@ export function findQuoteRange(scope: Node, quote: string): Range | null {
   return range;
 }
 
-// The smallest ancestor that holds a message as well as the composer, unless it also
-// holds another composer, which belongs to another pane.
+function reachesAnotherPane(scope: Element): boolean {
+  return scope.querySelectorAll(COMPOSER_ROOT_SELECTOR).length > 1;
+}
+
 function conversationOf(composer: Element): Element | null {
   for (let scope = composer.parentElement; scope; scope = scope.parentElement) {
-    if (scope.querySelectorAll(COMPOSER_ROOT_SELECTOR).length > 1) return null;
+    if (reachesAnotherPane(scope)) return null;
     if (scope.querySelector(MESSAGE_SELECTOR)) return scope;
   }
   return null;
