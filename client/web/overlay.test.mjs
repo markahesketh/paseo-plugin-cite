@@ -155,3 +155,28 @@ test("the citation is copied when the composer has no attachment bridge", async 
     composer.remove();
   }
 });
+
+test("bundle copies share one overlay until the last copy releases it", async () => {
+  // Paseo evaluates the plugin bundle once per host, so each host has its own module copy.
+  const secondCopy = await import("./overlay.ts?copy=2");
+  const composer = await renderComposer([citationAttachmentForEntry({ quote: "one", comment: "first" })]);
+  const releaseFirst = startOverlay();
+  const releaseSecond = secondCopy.startCitationOverlay({ async copyFallback() {} });
+  try {
+    assert.equal(document.querySelectorAll("#paseo-cite-overlay").length, 1);
+
+    releaseSecond();
+    releaseSecond();
+    await click(composer.pill(0));
+    assert.equal(shown(panel()), true);
+
+    releaseFirst();
+    assert.equal(document.getElementById("paseo-cite-overlay"), null);
+    const pillClick = new window.MouseEvent("click", { bubbles: true, cancelable: true });
+    await act(() => composer.pill(0).dispatchEvent(pillClick));
+    assert.equal(pillClick.defaultPrevented, false);
+  } finally {
+    releaseFirst();
+    await composer.cleanup();
+  }
+});

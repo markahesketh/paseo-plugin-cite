@@ -6,7 +6,6 @@ import { createCitationEntry, formatCitationEntry } from "../citation-format";
 import { addCitation, citationForPill, findComposerInput, replaceCitation } from "./composer-bridge";
 import { createOverlayView } from "./overlay-view";
 import {
-  OVERLAY_ID,
   elementForNode,
   findQuoteNearComposer,
   rangeShowsQuote,
@@ -45,7 +44,16 @@ interface CitedRange {
   input: HTMLTextAreaElement | null;
 }
 
-let activeOverlayCleanup: (() => void) | null = null;
+// Paseo evaluates the plugin bundle once per host, each with its own module scope, so
+// the running overlay is shared through globalThis rather than module state.
+const SHARED_OVERLAY = Symbol.for("paseo-cite.overlay");
+
+interface SharedOverlay {
+  holders: number;
+  dispose(): void;
+}
+
+const registry = globalThis as { [SHARED_OVERLAY]?: SharedOverlay };
 
 function isBrowserRuntime(): boolean {
   return typeof document !== "undefined" && typeof window !== "undefined";
@@ -261,19 +269,22 @@ function createOverlay(options: CitationOverlayOptions): () => void {
   };
 }
 
+// The first starter's options serve every copy. Each copy's release function releases
+// its hold once, and the overlay is torn down when the last hold is released.
 export function startCitationOverlay(options: CitationOverlayOptions): () => void {
   if (!isBrowserRuntime()) {
     return () => {};
   }
 
-  activeOverlayCleanup?.();
-  document.getElementById(OVERLAY_ID)?.remove();
-
-  const dispose = createOverlay(options);
-  const cleanup = (): void => {
-    dispose();
-    if (activeOverlayCleanup === cleanup) activeOverlayCleanup = null;
+  const shared = (registry[SHARED_OVERLAY] ??= { holders: 0, dispose: createOverlay(options) });
+  shared.holders += 1;
+  let held = true;
+  return () => {
+    if (!held) return;
+    held = false;
+    shared.holders -= 1;
+    if (shared.holders > 0) return;
+    shared.dispose();
+    if (registry[SHARED_OVERLAY] === shared) delete registry[SHARED_OVERLAY];
   };
-  activeOverlayCleanup = cleanup;
-  return cleanup;
 }
