@@ -242,10 +242,11 @@ function createOverlay(options: CitationOverlayOptions): () => void {
     const citation = target ? citationForPill(target) : null;
     if (citation) openEdit(citation, event);
   };
-  // Paseo's pills press on Enter and Space from keyup, not click, so the keydown is
-  // taken first to open the edit instead of the pill's own action.
+  // Paseo's pills press on keyup, not click, so the Enter keydown is taken first to
+  // open the edit instead of the pill's own action. Space is left alone because
+  // Paseo's window-level shortcuts already use it to toggle voice mute.
   const handlePillKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === "Enter" || event.key === " ") openEditFromPill(event);
+    if (event.key === "Enter") openEditFromPill(event);
   };
   const handleCancel = (event: Event): void => {
     event.preventDefault();

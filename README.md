@@ -14,7 +14,7 @@ Select part of an assistant reply, choose **Cite**, write a comment, and submit 
 - Adds each citation to the composer as its own attachment, so you can remove each one separately.
 - Shows a short form of the comment and the quote on each attachment.
 - Prevents duplicate citations.
-- Scrolls to and highlights the cited text when you select a citation attachment, or press `Enter` or `Space` on it, and opens its comment for editing.
+- Scrolls to and highlights the cited text when you select a citation attachment, or press `Enter` on it, and opens its comment for editing.
 - Copies the formatted citation when it cannot add the citation to the composer.
 
 ## Requirements
@@ -54,7 +54,7 @@ Check this claim again
 Citation “The cache is cleared on each…”
 ```
 
-Select a card, or focus it and press `Enter` or `Space`, to scroll to and highlight its cited text in the current conversation. The comment form opens with the full quote and the current comment. Change the comment and press `Enter` or select **Save**. The card stays in the same position. Press `Escape` or select **Cancel** to close the form with no change. If the cited text is no longer in the conversation, the form opens above the card.
+Select a card, or focus it and press `Enter`, to scroll to and highlight its cited text in the current conversation. The comment form opens with the full quote and the current comment. Change the comment and press `Enter` or select **Save**. The card stays in the same position. Press `Escape` or select **Cancel** to close the form with no change. If the cited text is no longer in the conversation, the form opens above the card.
 
 Remove a card to remove only that citation.
 
