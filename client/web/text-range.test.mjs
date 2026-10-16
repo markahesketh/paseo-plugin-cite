@@ -28,10 +28,10 @@ test("a quote matches text whose spacing differs", () => {
   assert.equal(findQuoteRange(scope, "answer is forty two")?.toString(), "answer\n is forty   two");
 });
 
-test("repeated text matches its first occurrence in the scope", () => {
+test("repeated text matches its last occurrence, the one nearest the composer", () => {
   const scope = render('<p id="first">same words</p><p id="second">same words</p>');
 
-  assert.equal(findQuoteRange(scope, "same words")?.startContainer.parentElement.id, "first");
+  assert.equal(findQuoteRange(scope, "same words")?.startContainer.parentElement.id, "second");
 });
 
 test("text in the composer or a citation pill is not a quote match", () => {
@@ -58,7 +58,18 @@ test("a quote is found in a message of the composer's own pane", () => {
   assert.equal(range?.startContainer.parentElement.id, "message");
 });
 
-test("text outside the conversation messages is not a quote match", () => {
+test("a quote is found in conversation content outside the messages", () => {
+  render(
+    `<main><div data-testid="assistant-message"><p>an answer</p></div>` +
+      `<div id="tool">tool output</div>${COMPOSER}</main>`,
+  );
+
+  const range = findQuoteNearComposer(document.querySelector("textarea"), "tool output");
+
+  assert.equal(range?.startContainer.parentElement.id, "tool");
+});
+
+test("text outside the conversation is not a quote match", () => {
   render(
     `<nav>sidebar only</nav>` +
       `<main><div data-testid="assistant-message"><p>an answer</p></div>${COMPOSER}</main>`,
