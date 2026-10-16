@@ -1,6 +1,8 @@
 import { CITATION_PILL_SELECTOR, COMPOSER_ROOT_SELECTOR } from "./composer-bridge";
 
-const EXCLUDED_SELECTOR = `${COMPOSER_ROOT_SELECTOR}, ${CITATION_PILL_SELECTOR}, [data-testid="paseo-cite-overlay"], textarea, input`;
+export const OVERLAY_ID = "paseo-cite-overlay";
+
+const EXCLUDED_SELECTOR = `${COMPOSER_ROOT_SELECTOR}, ${CITATION_PILL_SELECTOR}, #${OVERLAY_ID}, textarea, input`;
 
 export interface SelectionSnapshot {
   text: string;

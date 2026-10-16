@@ -5,6 +5,7 @@ import type { SelectionSnapshot } from "./text-range";
 import { createCitationEntry, formatCitationEntry } from "../citation-format";
 import { addCitation, citationForPill, findComposerInput, replaceCitation } from "./composer-bridge";
 import {
+  OVERLAY_ID,
   elementForNode,
   findQuoteNearComposer,
   liveRect,
@@ -12,7 +13,6 @@ import {
   readSelection,
 } from "./text-range";
 
-const OVERLAY_ID = "paseo-cite-overlay";
 const CITE_BUTTON_ID = "paseo-cite-button";
 const CITE_PANEL_ID = "paseo-cite-panel";
 const FONT_STACK =
@@ -23,8 +23,142 @@ const BORDER = "var(--colors-border, #e4e4e7)";
 const SURFACE = "var(--colors-surface0, #ffffff)";
 const RAISED_SURFACE = "var(--colors-surface1, #fafafa)";
 const ACCENT = "var(--colors-accent, #20744a)";
+const ACCENT_MUTED = "var(--colors-accent-muted, rgb(32 116 74 / 25%))";
 const ACCENT_FOREGROUND = "var(--colors-accent-foreground, #ffffff)";
 const DESTRUCTIVE = "var(--colors-destructive, #dc2626)";
+
+const STYLESHEET = `
+#${OVERLAY_ID} {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483647;
+  font-family: ${FONT_STACK};
+}
+#${OVERLAY_ID} [hidden] {
+  display: none;
+}
+#${OVERLAY_ID} .cite {
+  position: fixed;
+  pointer-events: auto;
+  padding: 7px 11px;
+  border: 1px solid ${BORDER};
+  border-radius: 10px;
+  background: ${ACCENT};
+  color: ${ACCENT_FOREGROUND};
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 16%), 0 1px 3px rgb(0 0 0 / 10%);
+  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+#${OVERLAY_ID} .panel {
+  position: fixed;
+  width: 560px;
+  max-width: calc(100vw - 24px);
+  margin: 0;
+  padding: 12px 14px 14px;
+  pointer-events: auto;
+  border: 1px solid ${BORDER};
+  border-radius: 12px;
+  background: ${RAISED_SURFACE};
+  color: ${FOREGROUND};
+  box-shadow: 0 12px 30px rgb(0 0 0 / 18%), 0 3px 8px rgb(0 0 0 / 10%);
+  box-sizing: border-box;
+  font-size: 14px;
+  line-height: 1.4;
+  color-scheme: light dark;
+  backdrop-filter: blur(16px);
+}
+#${OVERLAY_ID} .quote {
+  margin: 0 0 10px;
+  padding: 2px 0 2px 10px;
+  max-height: 72px;
+  overflow: auto;
+  border-left: 3px solid ${BORDER};
+  color: ${MUTED_FOREGROUND};
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+#${OVERLAY_ID} .comment {
+  display: block;
+  width: 100%;
+  min-height: 130px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 2px solid ${ACCENT};
+  border-radius: 10px;
+  background: ${SURFACE};
+  color: ${FOREGROUND};
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  outline: none;
+}
+#${OVERLAY_ID} .comment:focus-visible {
+  box-shadow: 0 0 0 3px ${ACCENT_MUTED};
+}
+#${OVERLAY_ID} .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 20px;
+}
+#${OVERLAY_ID} .action {
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: ${MUTED_FOREGROUND};
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 18px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: background 120ms ease, opacity 120ms ease;
+}
+#${OVERLAY_ID} .action.primary {
+  padding: 8px 16px;
+  border-radius: 10px;
+  background: ${ACCENT};
+  color: ${ACCENT_FOREGROUND};
+  box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
+}
+#${OVERLAY_ID} .action:disabled {
+  opacity: 0.48;
+  cursor: default;
+}
+#${OVERLAY_ID} .toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  max-width: min(420px, calc(100vw - 24px));
+  padding: 9px 13px;
+  border-radius: 10px;
+  box-sizing: border-box;
+  background: ${RAISED_SURFACE};
+  color: ${FOREGROUND};
+  border: 1px solid ${BORDER};
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  font-size: 13px;
+  line-height: 18px;
+}
+#${OVERLAY_ID} .toast.error {
+  color: ${DESTRUCTIVE};
+}
+#${OVERLAY_ID} .highlight {
+  position: fixed;
+  background: ${ACCENT_MUTED};
+  border-radius: 2px;
+}
+`;
 
 function isBrowserRuntime(): boolean {
   return typeof document !== "undefined" && typeof window !== "undefined";
@@ -60,10 +194,6 @@ const MESSAGES: Record<Notice, { text: string; isError: boolean }> = {
 };
 
 let activeOverlayCleanup: (() => void) | null = null;
-
-function setStyles(element: HTMLElement, styles: Record<string, string>): void {
-  Object.assign(element.style, styles);
-}
 
 function createTextElement<K extends keyof HTMLElementTagNameMap>(
   tagName: K,
@@ -104,95 +234,6 @@ function positionPanel(element: HTMLElement, rect: DOMRect): void {
   element.style.top = `${clamp(top, 8, Math.max(8, window.innerHeight - height - 8))}px`;
 }
 
-function setStylesForOverlayRoot(root: HTMLElement): void {
-  setStyles(root, {
-    fontFamily: FONT_STACK,
-    position: "fixed",
-    inset: "0",
-    pointerEvents: "none",
-    zIndex: "2147483647",
-  });
-}
-
-function styleButton(button: HTMLElement): void {
-  setStyles(button, {
-    position: "fixed",
-    pointerEvents: "auto",
-    padding: "7px 11px",
-    border: `1px solid ${BORDER}`,
-    borderRadius: "10px",
-    background: ACCENT,
-    color: ACCENT_FOREGROUND,
-    fontFamily: FONT_STACK,
-    fontSize: "13px",
-    lineHeight: "18px",
-    fontWeight: "600",
-    letterSpacing: "-0.01em",
-    whiteSpace: "nowrap",
-    cursor: "pointer",
-    boxShadow: "0 4px 12px rgb(0 0 0 / 16%), 0 1px 3px rgb(0 0 0 / 10%)",
-    transition: "transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease",
-  });
-}
-
-function stylePanel(panel: HTMLElement): void {
-  setStyles(panel, {
-    position: "fixed",
-    width: "560px",
-    maxWidth: "calc(100vw - 24px)",
-    padding: "12px 14px 14px",
-    pointerEvents: "auto",
-    border: `1px solid ${BORDER}`,
-    borderRadius: "12px",
-    background: RAISED_SURFACE,
-    color: FOREGROUND,
-    boxShadow: "0 12px 30px rgb(0 0 0 / 18%), 0 3px 8px rgb(0 0 0 / 10%)",
-    boxSizing: "border-box",
-    fontFamily: FONT_STACK,
-    fontSize: "14px",
-    lineHeight: "1.4",
-    colorScheme: "light dark",
-    backdropFilter: "blur(16px)",
-  });
-}
-
-function styleTextArea(textarea: HTMLElement): void {
-  setStyles(textarea, {
-    display: "block",
-    width: "100%",
-    minHeight: "130px",
-    margin: "0 0 16px",
-    padding: "12px 14px",
-    boxSizing: "border-box",
-    resize: "vertical",
-    border: `2px solid ${ACCENT}`,
-    borderRadius: "10px",
-    background: SURFACE,
-    color: FOREGROUND,
-    fontFamily: FONT_STACK,
-    fontSize: "14px",
-    lineHeight: "1.45",
-    outline: "none",
-  });
-}
-
-function styleActionButton(button: HTMLElement, primary: boolean): void {
-  setStyles(button, {
-    padding: primary ? "8px 16px" : "8px",
-    border: "1px solid transparent",
-    borderRadius: primary ? "10px" : "8px",
-    background: primary ? ACCENT : "transparent",
-    color: primary ? ACCENT_FOREGROUND : MUTED_FOREGROUND,
-    fontFamily: FONT_STACK,
-    fontSize: "15px",
-    lineHeight: "18px",
-    fontWeight: "400",
-    cursor: "pointer",
-    boxShadow: primary ? "0 1px 2px rgb(0 0 0 / 10%)" : "none",
-    transition: "background 120ms ease, opacity 120ms ease",
-  });
-}
-
 export function startCitationOverlay(options: CitationOverlayOptions): () => void {
   if (!isBrowserRuntime()) {
     return () => {};
@@ -203,16 +244,15 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
 
   const root = document.createElement("div");
   root.id = OVERLAY_ID;
-  root.setAttribute("data-testid", OVERLAY_ID);
-  setStylesForOverlayRoot(root);
+  root.append(createTextElement("style", STYLESHEET));
 
   const citeButton = createTextElement("button", "Cite");
   root.append(citeButton);
   citeButton.id = CITE_BUTTON_ID;
+  citeButton.className = "cite";
   citeButton.setAttribute("type", "button");
   citeButton.setAttribute("aria-label", "Cite selected answer text");
-  styleButton(citeButton);
-  citeButton.style.display = "none";
+  citeButton.hidden = true;
 
   const panel = document.createElement("form");
   root.append(panel);
@@ -221,71 +261,42 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   panel.setAttribute("aria-modal", "true");
   panel.setAttribute("aria-label", "Add a citation comment");
   panel.setAttribute("tabindex", "-1");
-  stylePanel(panel);
-  panel.style.display = "none";
+  panel.className = "panel";
+  panel.hidden = true;
 
   // Shows the full quote when you edit a citation, because the pill shows only part of it.
   const quoteText = document.createElement("div");
   panel.append(quoteText);
-  setStyles(quoteText, {
-    display: "none",
-    margin: "0 0 10px",
-    padding: "2px 0 2px 10px",
-    maxHeight: "72px",
-    overflow: "auto",
-    borderLeft: `3px solid ${BORDER}`,
-    color: MUTED_FOREGROUND,
-    fontSize: "13px",
-    lineHeight: "1.4",
-    whiteSpace: "pre-wrap",
-  });
+  quoteText.className = "quote";
+  quoteText.hidden = true;
 
   const commentInput = document.createElement("textarea");
   panel.append(commentInput);
+  commentInput.className = "comment";
   commentInput.setAttribute("aria-label", "Citation comment");
   commentInput.setAttribute("placeholder", "Leave a comment");
-  styleTextArea(commentInput);
 
   const actions = document.createElement("div");
   panel.append(actions);
-  setStyles(actions, { display: "flex", justifyContent: "flex-end", gap: "20px" });
+  actions.className = "actions";
 
   const cancelButton = createTextElement("button", "Cancel");
   actions.append(cancelButton);
+  cancelButton.className = "action";
   cancelButton.setAttribute("type", "button");
-  styleActionButton(cancelButton, false);
 
   const submitButton = createTextElement("button", "Comment");
   actions.append(submitButton);
+  submitButton.className = "action primary";
   submitButton.setAttribute("type", "submit");
-  submitButton.setAttribute("disabled", "");
-  styleActionButton(submitButton, true);
-  submitButton.style.opacity = "0.48";
-  submitButton.style.cursor = "default";
+  submitButton.disabled = true;
 
   const toast = createTextElement("div", "");
   root.append(toast);
+  toast.className = "toast";
+  toast.hidden = true;
   toast.setAttribute("role", "status");
   toast.setAttribute("aria-live", "polite");
-  setStyles(toast, {
-    position: "fixed",
-    left: "50%",
-    bottom: "24px",
-    transform: "translateX(-50%)",
-    display: "none",
-    pointerEvents: "none",
-    maxWidth: "min(420px, calc(100vw - 24px))",
-    padding: "9px 13px",
-    borderRadius: "10px",
-    boxSizing: "border-box",
-    background: RAISED_SURFACE,
-    color: FOREGROUND,
-    border: `1px solid ${BORDER}`,
-    boxShadow: "0 8px 24px rgb(0 0 0 / 18%)",
-    fontFamily: FONT_STACK,
-    fontSize: "13px",
-    lineHeight: "18px",
-  });
 
   // The page selection moves into the comment box when it gets focus, so draw the
   // highlight for an edited citation separately.
@@ -305,11 +316,11 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   const showToast = (notice: Notice): void => {
     const message = MESSAGES[notice];
     toast.textContent = message.text;
-    toast.style.color = message.isError ? DESTRUCTIVE : FOREGROUND;
-    toast.style.display = "block";
+    toast.classList.toggle("error", message.isError);
+    toast.hidden = false;
     if (toastTimer !== null) window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => {
-      toast.style.display = "none";
+      toast.hidden = true;
       toastTimer = null;
     }, 2600);
   };
@@ -321,15 +332,11 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     for (const rect of Array.from(range.getClientRects())) {
       const box = document.createElement("div");
       highlightLayer.append(box);
-      setStyles(box, {
-        position: "fixed",
-        left: `${rect.left}px`,
-        top: `${rect.top}px`,
-        width: `${rect.right - rect.left}px`,
-        height: `${rect.bottom - rect.top}px`,
-        background: "var(--colors-accent-muted, rgb(32 116 74 / 25%))",
-        borderRadius: "2px",
-      });
+      box.className = "highlight";
+      box.style.left = `${rect.left}px`;
+      box.style.top = `${rect.top}px`;
+      box.style.width = `${rect.right - rect.left}px`;
+      box.style.height = `${rect.bottom - rect.top}px`;
     }
   };
 
@@ -340,8 +347,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   };
 
   const closePanel = (): void => {
-    panel.style.display = "none";
-    citeButton.style.display = "none";
+    panel.hidden = true;
+    citeButton.hidden = true;
     activeSelection = null;
     selectionComposerInput = null;
     editingCitation = null;
@@ -357,17 +364,17 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     if (!rect) return;
     previousFocusedElement =
       document.activeElement instanceof window.HTMLElement ? document.activeElement : null;
-    citeButton.style.display = "none";
+    citeButton.hidden = true;
     panel.setAttribute(
       "aria-label",
       quote === null ? "Add a citation comment" : "Edit the citation comment",
     );
     quoteText.textContent = quote ?? "";
-    quoteText.style.display = quote === null ? "none" : "block";
+    quoteText.hidden = quote === null;
     submitButton.textContent = quote === null ? "Comment" : "Save";
     commentInput.value = comment;
     updateSubmitButton();
-    panel.style.display = "block";
+    panel.hidden = false;
     positionPanel(panel, rect);
     commentInput.focus();
     commentInput.setSelectionRange(comment.length, comment.length);
@@ -384,28 +391,19 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     panel.querySelectorAll<HTMLElement>("button, textarea, [tabindex]");
 
   const updateSubmitButton = (): void => {
-    if (commentInput.value.trim()) {
-      submitButton.removeAttribute("disabled");
-      submitButton.style.opacity = "1";
-      submitButton.style.cursor = "pointer";
-      return;
-    }
-
-    submitButton.setAttribute("disabled", "");
-    submitButton.style.opacity = "0.48";
-    submitButton.style.cursor = "default";
+    submitButton.disabled = !commentInput.value.trim();
   };
 
   const handleSelectionChange = (): void => {
-    if (panel.style.display === "block") return;
+    if (!panel.hidden) return;
     const nextSelection = readSelection();
     activeSelection = nextSelection;
     if (!nextSelection) {
-      citeButton.style.display = "none";
+      citeButton.hidden = true;
       return;
     }
     positionElement(citeButton, nextSelection.rect, 30);
-    citeButton.style.display = "block";
+    citeButton.hidden = false;
   };
 
   // selectionchange does not always fire after a pointer or key selection ends.
@@ -494,9 +492,6 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
       })
       .catch(() => showToast("copy-failed"));
   };
-  const handleCommentInput = (): void => {
-    updateSubmitButton();
-  };
   const handlePanelEscape = (event: KeyboardEvent): void => {
     if (event.key === "Tab") {
       const focusable = focusablePanelElements();
@@ -530,21 +525,9 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     event.preventDefault();
     handleSubmit(event);
   };
-  const handleCommentInputFocus = (): void => {
-    commentInput.style.borderColor = ACCENT;
-    commentInput.style.boxShadow = "0 0 0 3px var(--colors-accent-muted, rgb(32 116 74 / 25%))";
-  };
-  const handleCommentInputBlur = (): void => {
-    commentInput.style.borderColor = ACCENT;
-    commentInput.style.boxShadow = "none";
-  };
   const handleOutsidePointerDown = (event: Event): void => {
     const target = targetElement(event);
-    if (
-      panel.style.display === "block" &&
-      !panel.contains(target) &&
-      !citeButton.contains(target)
-    ) {
+    if (!panel.hidden && !panel.contains(target) && !citeButton.contains(target)) {
       closePanel();
     }
   };
@@ -579,7 +562,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   const handleWindowChange = (): void => {
     const rect = panelAnchorRect();
     if (!rect) return;
-    if (panel.style.display === "block") {
+    if (!panel.hidden) {
       positionPanel(panel, rect);
       drawEditHighlight();
     } else {
@@ -599,10 +582,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   cancelButton.addEventListener("click", handleCancel, { signal });
   panel.addEventListener("submit", handleSubmit, { signal });
   panel.addEventListener("keydown", handlePanelEscape, { signal });
-  commentInput.addEventListener("input", handleCommentInput, { signal });
+  commentInput.addEventListener("input", updateSubmitButton, { signal });
   commentInput.addEventListener("keydown", handleCommentInputKeyDown, { signal });
-  commentInput.addEventListener("focus", handleCommentInputFocus, { signal });
-  commentInput.addEventListener("blur", handleCommentInputBlur, { signal });
   document.addEventListener("mousedown", handleOutsidePointerDown, { signal, capture: true });
   document.addEventListener("click", handleCitationAttachmentClick, { signal, capture: true });
 

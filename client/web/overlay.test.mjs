@@ -69,7 +69,7 @@ function startOverlay(options = {}) {
 const citeButton = () => document.getElementById("paseo-cite-button");
 const panel = () => document.getElementById("paseo-cite-panel");
 const comment = () => panel().querySelector("textarea");
-const shown = (element) => Boolean(element?.isConnected) && element.style.display === "block";
+const shown = (element) => Boolean(element?.isConnected) && !element.hidden;
 
 function selectAnswer() {
   const range = document.createRange();
