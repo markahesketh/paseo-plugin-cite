@@ -234,7 +234,15 @@ function createOverlay(options: CitationOverlayOptions): () => void {
     const action = commentKeyAction(event);
     if (action === "none") return;
     event.stopPropagation();
-    if (action === "submit") submit(event);
+    if (action === "submit") {
+      submit(event);
+    } else if (event.altKey) {
+      // Browsers insert a newline for Shift+Enter but not for Alt+Enter.
+      event.preventDefault();
+      const { selectionStart, selectionEnd } = commentInput;
+      commentInput.setRangeText("\n", selectionStart, selectionEnd, "end");
+      view.commentChanged();
+    }
   };
   const handleOutsidePointerDown = (event: Event): void => {
     if (panelOpen() && !root.contains(targetElement(event))) dismiss();
