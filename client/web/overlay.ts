@@ -216,22 +216,15 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-function positionElement(element: HTMLElement, rect: DOMRect, height: number): void {
-  const width = 78;
-  const left = clamp(rect.left, 8, Math.max(8, window.innerWidth - width - 8));
-  const top = rect.top - height - 8 >= 8 ? rect.top - height - 8 : rect.bottom + 8;
-  element.style.left = `${left}px`;
-  element.style.top = `${clamp(top, 8, Math.max(8, window.innerHeight - height - 8))}px`;
-}
-
-function positionPanel(element: HTMLElement, rect: DOMRect): void {
-  const width = 560;
-  const measured = element.getBoundingClientRect();
-  const height = measured.bottom - measured.top || 214;
-  const left = clamp(rect.left, 8, Math.max(8, window.innerWidth - width - 8));
-  const top = rect.bottom + 8 + height <= window.innerHeight ? rect.bottom + 8 : rect.top - height - 8;
-  element.style.left = `${left}px`;
-  element.style.top = `${clamp(top, 8, Math.max(8, window.innerHeight - height - 8))}px`;
+// The element must be visible so that it can measure itself.
+function placeNear(element: HTMLElement, anchor: DOMRect, prefer: "above" | "below"): void {
+  const margin = 8;
+  const { width, height } = element.getBoundingClientRect();
+  const top = { above: anchor.top - height - margin, below: anchor.bottom + margin };
+  const fits = { above: top.above >= margin, below: top.below + height <= window.innerHeight };
+  const side = fits[prefer] ? prefer : prefer === "above" ? "below" : "above";
+  element.style.left = `${clamp(anchor.left, margin, Math.max(margin, window.innerWidth - width - margin))}px`;
+  element.style.top = `${clamp(top[side], margin, Math.max(margin, window.innerHeight - height - margin))}px`;
 }
 
 export function startCitationOverlay(options: CitationOverlayOptions): () => void {
@@ -375,7 +368,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     commentInput.value = comment;
     updateSubmitButton();
     panel.hidden = false;
-    positionPanel(panel, rect);
+    placeNear(panel, rect, "below");
     commentInput.focus();
     commentInput.setSelectionRange(comment.length, comment.length);
   };
@@ -402,8 +395,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
       citeButton.hidden = true;
       return;
     }
-    positionElement(citeButton, nextSelection.rect, 30);
     citeButton.hidden = false;
+    placeNear(citeButton, nextSelection.rect, "above");
   };
 
   // selectionchange does not always fire after a pointer or key selection ends.
@@ -563,10 +556,10 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     const rect = panelAnchorRect();
     if (!rect) return;
     if (!panel.hidden) {
-      positionPanel(panel, rect);
+      placeNear(panel, rect, "below");
       drawEditHighlight();
     } else {
-      positionElement(citeButton, rect, 30);
+      placeNear(citeButton, rect, "above");
     }
   };
 
