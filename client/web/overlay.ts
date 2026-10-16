@@ -65,7 +65,7 @@ function targetElement(event: Event): Element | null {
 
 function createOverlay(options: CitationOverlayOptions): () => void {
   const view = createOverlayView();
-  const { root, citeButton, panel, commentInput, cancelButton } = view;
+  const { root, citeButton, panel, commentInput, cancelButton, submitButton } = view;
   document.body.appendChild(root);
 
   let state: OverlayState = { kind: "idle" };
@@ -203,27 +203,20 @@ function createOverlay(options: CitationOverlayOptions): () => void {
     else if (state.kind === "edit") saveEdit(state, comment);
   };
 
-  const handlePanelKeyDown = (event: KeyboardEvent): void => {
+  // Focus stays in the comment box while the panel is open. Paseo's window-level key
+  // handling treats a focused textarea as editable, so Escape here does not interrupt
+  // the agent, while Escape on a focused button would.
+  const handleCommentKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "Tab") {
-      const focusable = panel.querySelectorAll<HTMLElement>("button, textarea, [tabindex]");
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
+      event.preventDefault();
       return;
     }
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    event.stopPropagation();
-    dismiss();
-  };
-  const handleCommentKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      dismiss();
+      return;
+    }
     if (event.key !== "Enter") return;
     if (event.isComposing || event.keyCode === 229) return;
     event.stopPropagation();
@@ -242,7 +235,7 @@ function createOverlay(options: CitationOverlayOptions): () => void {
     event.preventDefault();
     dismiss();
   };
-  const keepSelection = (event: Event): void => event.preventDefault();
+  const keepFocus = (event: Event): void => event.preventDefault();
   const handleWindowChange = (): void => view.reposition(state);
 
   const listeners = new window.AbortController();
@@ -252,11 +245,12 @@ function createOverlay(options: CitationOverlayOptions): () => void {
   document.addEventListener("keyup", scheduleSelectionChange, { signal, capture: true });
   window.addEventListener("resize", handleWindowChange, { signal });
   window.addEventListener("scroll", handleWindowChange, { signal, capture: true });
-  citeButton.addEventListener("mousedown", keepSelection, { signal });
+  citeButton.addEventListener("mousedown", keepFocus, { signal });
+  cancelButton.addEventListener("mousedown", keepFocus, { signal });
+  submitButton.addEventListener("mousedown", keepFocus, { signal });
   citeButton.addEventListener("click", openCompose, { signal });
   cancelButton.addEventListener("click", handleCancel, { signal });
   panel.addEventListener("submit", submit, { signal });
-  panel.addEventListener("keydown", handlePanelKeyDown, { signal });
   commentInput.addEventListener("input", view.commentChanged, { signal });
   commentInput.addEventListener("keydown", handleCommentKeyDown, { signal });
   document.addEventListener("mousedown", handleOutsidePointerDown, { signal, capture: true });

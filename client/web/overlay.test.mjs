@@ -80,8 +80,20 @@ function selectAnswer() {
   document.dispatchEvent(new window.Event("selectionchange"));
 }
 
-const click = (element) =>
-  act(() => element.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true })));
+const mouse = (element, type) =>
+  act(() => {
+    const event = new window.MouseEvent(type, { bubbles: true, cancelable: true });
+    element.dispatchEvent(event);
+    return event;
+  });
+const click = (element) => mouse(element, "click");
+
+const keydown = (element, key, init = {}) =>
+  act(() => {
+    const event = new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
+    element.dispatchEvent(event);
+    return event;
+  });
 
 async function submitComment(text) {
   comment().value = text;
@@ -177,6 +189,47 @@ test("bundle copies share one overlay until the last copy releases it", async ()
     assert.equal(pillClick.defaultPrevented, false);
   } finally {
     releaseFirst();
+    await composer.cleanup();
+  }
+});
+
+test("focus stays in the comment box and Escape there closes the panel", async () => {
+  const composer = await renderComposer();
+  const stop = startOverlay();
+  try {
+    selectAnswer();
+    await click(citeButton());
+    assert.equal(document.activeElement, comment());
+
+    const tab = await keydown(comment(), "Tab");
+    assert.equal(tab.defaultPrevented, true);
+    const press = await mouse(panel().querySelector("button[type=submit]"), "mousedown");
+    assert.equal(press.defaultPrevented, true);
+    assert.equal(document.activeElement, comment());
+
+    await keydown(comment(), "Escape");
+    assert.equal(shown(panel()), false);
+  } finally {
+    stop();
+    await composer.cleanup();
+  }
+});
+
+test("Cancel and a click outside the panel close it without changes", async () => {
+  const composer = await renderComposer([citationAttachmentForEntry({ quote: "one", comment: "first" })]);
+  const stop = startOverlay();
+  try {
+    await click(composer.pill(0));
+    comment().value = "unsaved";
+    await click(panel().querySelector("button[type=button]"));
+    assert.equal(shown(panel()), false);
+
+    await click(composer.pill(0));
+    await mouse(document.getElementById("answer"), "mousedown");
+    assert.equal(shown(panel()), false);
+    assert.deepEqual(composer.entries(), [{ quote: "one", comment: "first" }]);
+  } finally {
+    stop();
     await composer.cleanup();
   }
 });

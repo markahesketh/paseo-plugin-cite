@@ -242,9 +242,11 @@ export function createOverlayView(): OverlayView {
   const cancelButton = element("button", "action", "Cancel");
   actions.append(cancelButton);
   cancelButton.type = "button";
+  cancelButton.tabIndex = -1;
   const submitButton = element("button", "action primary", "Comment");
   actions.append(submitButton);
   submitButton.type = "submit";
+  submitButton.tabIndex = -1;
 
   const toast = element("div", "toast");
   root.append(toast);
