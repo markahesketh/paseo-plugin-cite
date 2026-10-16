@@ -79,7 +79,7 @@ export function findQuoteRange(scope: Node, quote: string): Range | null {
     }
   }
 
-  const start = haystack.indexOf(needle);
+  const start = haystack.lastIndexOf(needle);
   if (start < 0) return null;
   const end = start + needle.length - 1;
   const range = document.createRange();
@@ -88,18 +88,14 @@ export function findQuoteRange(scope: Node, quote: string): Range | null {
   return range;
 }
 
-// A pane holds one composer and its conversation. Another composer means another pane.
-function paneOf(composer: Element): Element {
-  let pane = composer;
-  for (
-    let parent = composer.parentElement;
-    parent && parent !== document.documentElement;
-    parent = parent.parentElement
-  ) {
-    if (parent.querySelectorAll(COMPOSER_ROOT_SELECTOR).length > 1) break;
-    pane = parent;
+// The smallest ancestor that holds a message as well as the composer, unless it also
+// holds another composer, which belongs to another pane.
+function conversationOf(composer: Element): Element | null {
+  for (let scope = composer.parentElement; scope; scope = scope.parentElement) {
+    if (scope.querySelectorAll(COMPOSER_ROOT_SELECTOR).length > 1) return null;
+    if (scope.querySelector(MESSAGE_SELECTOR)) return scope;
   }
-  return pane;
+  return null;
 }
 
 export function findQuoteNearComposer(
@@ -107,10 +103,6 @@ export function findQuoteNearComposer(
   quote: string,
 ): Range | null {
   const composer = input?.closest(COMPOSER_ROOT_SELECTOR);
-  const pane = composer ? paneOf(composer) : document.body;
-  for (const message of Array.from(pane.querySelectorAll(MESSAGE_SELECTOR))) {
-    const range = findQuoteRange(message, quote);
-    if (range) return range;
-  }
-  return null;
+  const scope = composer ? conversationOf(composer) : document.body;
+  return scope ? findQuoteRange(scope, quote) : null;
 }
