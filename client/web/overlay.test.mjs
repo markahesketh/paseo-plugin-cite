@@ -214,6 +214,25 @@ test("focus stays in the comment box and Escape there closes the panel", async (
   }
 });
 
+test("Alt+Enter inserts a newline in the comment", async () => {
+  const composer = await renderComposer();
+  const stop = startOverlay();
+  try {
+    selectAnswer();
+    await click(citeButton());
+    comment().value = "first";
+    comment().setSelectionRange(5, 5);
+
+    await keydown(comment(), "Enter", { altKey: true });
+
+    assert.equal(comment().value, "first\n");
+    assert.equal(shown(panel()), true);
+  } finally {
+    stop();
+    await composer.cleanup();
+  }
+});
+
 test("Cancel and a click outside the panel close it without changes", async () => {
   const composer = await renderComposer([citationAttachmentForEntry({ quote: "one", comment: "first" })]);
   const stop = startOverlay();
