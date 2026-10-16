@@ -10,6 +10,7 @@ import { findFiberProps } from "../react-fiber";
 
 export const COMPOSER_ROOT_SELECTOR = '[data-testid="message-input-root"]';
 export const CITATION_PILL_SELECTOR = '[data-testid="composer-plugin-resource-attachment-pill"]';
+export const MESSAGE_SELECTOR = '[data-testid="assistant-message"], [data-testid="user-message"]';
 const COMPOSER_INPUT_SELECTOR = `${COMPOSER_ROOT_SELECTOR} textarea`;
 
 export type CitationFailure = "duplicate" | "missing" | "unavailable";

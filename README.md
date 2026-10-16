@@ -82,7 +82,7 @@ Paseo does not currently expose a public API for adding an arbitrary attachment 
 
 ### Selecting text
 
-Paseo does not expose assistant-message identity to plugins. The action is available for selectable conversation text outside the composer, so use it on assistant replies. If the cited text is no longer in the conversation when you select its card, the plugin shows "Could not find the cited text in this conversation." and still opens the comment for editing.
+The action is available for any selectable text outside the composer, so use it on assistant replies. Selecting a card searches only the messages in that card's conversation. If the cited text is no longer in the conversation when you select its card, the plugin shows "Could not find the cited text in this conversation." and still opens the comment for editing.
 
 ### Fallback mode
 
