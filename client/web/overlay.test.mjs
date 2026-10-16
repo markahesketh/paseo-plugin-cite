@@ -200,8 +200,10 @@ test("focus stays in the comment box and Escape there closes the panel", async (
 
     const tab = await keydown(comment(), "Tab");
     assert.equal(tab.defaultPrevented, true);
-    const press = await mouse(panel().querySelector("button[type=submit]"), "mousedown");
-    assert.equal(press.defaultPrevented, true);
+    for (const target of [panel().querySelector("button[type=submit]"), panel()]) {
+      const press = await mouse(target, "mousedown");
+      assert.equal(press.defaultPrevented, true);
+    }
     assert.equal(document.activeElement, comment());
 
     await keydown(comment(), "Escape");
