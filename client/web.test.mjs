@@ -19,6 +19,7 @@ window.find = () => false;
 const { act, createElement: h, useState } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { citationAttachmentForEntry, citationEntryForAttachment } = await import("./citation-attachment.ts");
+const { formatCitationEntry } = await import("./citation-format.ts");
 const { startCitationOverlay } = await import("./web.ts");
 
 test("adding a citation uses the functional attachment updater", async () => {
@@ -126,4 +127,37 @@ test("editing a citation pill changes only that citation", async () => {
   );
   stop();
   await act(() => root.unmount());
+});
+
+test("citation is copied when the composer has no attachment bridge", async () => {
+  const composer = document.createElement("div");
+  composer.innerHTML = '<div data-testid="message-input-root"><textarea></textarea></div>';
+  document.body.append(composer);
+  const copied = [];
+  const stop = startCitationOverlay({
+    async copyFallback(text) {
+      copied.push(text);
+    },
+  });
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(document.getElementById("answer"));
+    window.getSelection().removeAllRanges();
+    window.getSelection().addRange(range);
+    document.dispatchEvent(new window.Event("selectionchange"));
+    document.getElementById("paseo-cite-button").dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    const panel = document.getElementById("paseo-cite-panel");
+    panel.querySelector("textarea").value = "Check this claim.";
+    panel.dispatchEvent(new window.Event("submit", { cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve));
+
+    assert.deepEqual(copied, [
+      formatCitationEntry({ quote: "The answer is forty two.", comment: "Check this claim." }),
+    ]);
+    assert.equal(panel.style.display, "none");
+  } finally {
+    window.getSelection().removeAllRanges();
+    stop();
+    composer.remove();
+  }
 });

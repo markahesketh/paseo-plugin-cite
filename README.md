@@ -15,7 +15,7 @@ Select part of an assistant reply, choose **Cite**, write a comment, and submit 
 - Shows a short form of the comment and the quote on each attachment.
 - Prevents duplicate citations.
 - Scrolls to and highlights the cited text when you select a citation attachment, and opens its comment for editing.
-- Copies a formatted citation when the composer attachment bridge is unavailable.
+- Copies the formatted citation when it cannot add the citation to the composer.
 
 ## Requirements
 
@@ -56,7 +56,7 @@ Citation “The cache is cleared on each…”
 
 Select a card to scroll to and highlight its cited text in the current conversation. The comment form opens with the full quote and the current comment. Change the comment and press `Enter` or select **Save**. The card stays in the same position. Press `Escape` or select **Cancel** to close the form with no change. If the cited text is no longer in the conversation, the form opens above the card.
 
-Remove a card to remove only that citation. Combined citation cards from earlier versions are split into one card for each citation.
+Remove a card to remove only that citation.
 
 The text sent with each citation has this form:
 
@@ -68,7 +68,7 @@ Comment:
 your comment
 ```
 
-The plugin stores each citation entry as structured data inside its composer attachment and keeps the formatted text as a compatibility snapshot for the agent. It still reads text that uses the earlier `[Citation from your previous answer]` header.
+The attachment holds this text and nothing else. The plugin reads the quote and comment back from it, so a restored draft keeps its citations.
 
 ## Known limitations
 
@@ -82,11 +82,11 @@ Paseo does not currently expose a public API for adding an arbitrary attachment 
 
 ### Selecting text
 
-Paseo does not expose assistant-message identity to plugins. The action is available for selectable conversation text outside the composer, so use it on assistant replies. If the selected text is no longer present after a conversation update, the plugin reports that it cannot find the citation.
+Paseo does not expose assistant-message identity to plugins. The action is available for selectable conversation text outside the composer, so use it on assistant replies. If the cited text is no longer in the conversation when you select its card, the plugin shows "Could not find the cited text in this conversation." and still opens the comment for editing.
 
 ### Fallback mode
 
-If the composer bridge is not available, the plugin copies the formatted citation so you can paste it into the composer. If no composer can be found, it also uses this fallback.
+If the composer bridge is missing, Paseo rejects the attachment update, or no composer can be found, the plugin copies the formatted citation and shows a message so you can paste it into the composer.
 
 ## Development
 
@@ -105,7 +105,7 @@ paseo plugin install /absolute/path/to/paseo-plugin-cite
 paseo plugin reload paseo-cite
 ```
 
-The test suite covers citation formatting, multiple citations, delimiter-like quote and comment content, size limits, one attachment for each citation, the split of combined attachments, the card text, in-place edits, the committed React fiber lookup against React DOM, and the cite button and comment edit flow against jsdom and React DOM.
+The test suite covers citation formatting, quote and comment content that looks like the format, size limits, one attachment for each citation, restored attachments, the card text, in-place edits, the copy fallback, the committed React fiber lookup against React DOM, and the cite button and comment edit flow against jsdom and React DOM.
 
 ## Project layout
 
@@ -114,22 +114,22 @@ The test suite covers citation formatting, multiple citations, delimiter-like qu
 ├── client/
 │   ├── citation-attachment.ts        Citation composer attachment model
 │   ├── citation-attachment.test.mjs  Attachment tests
-│   ├── citation-format.ts            Citation model and text compatibility format
+│   ├── citation-format.ts            Citation model and text format
 │   ├── citation-format.test.mjs      Formatting tests
 │   ├── react-fiber.ts                Committed React fiber lookup for the composer bridge
 │   ├── react-fiber.test.mjs          Fiber lookup tests against React DOM
 │   ├── web.test.mjs                  Overlay tests against jsdom
 │   └── web.ts                        Web selection, composer bridge, and overlay UI
 ├── test/
-│   ├── react-native-stub.mjs         react-native stub for tests
-│   └── resolve-ts.mjs                Node import hook for TypeScript imports and the stub
+│   └── resolve-ts.mjs                Node import hook for TypeScript imports
 ├── index.client.tsx                  Paseo client entry point
 ├── paseo-plugin.json                 Paseo plugin manifest
 ├── package.json                      Development scripts and SDK versions
-└── tsconfig.json                     Strict, DOM-free TypeScript configuration
+├── tsconfig.json                     Strict, DOM-free TypeScript configuration
+└── tsconfig.web.json                 The same, with the DOM lib, for the web code
 ```
 
-Only `client/web.ts` touches browser APIs. The rest of the plugin remains compatible with Paseo's client bundle rules.
+Only `client/web.ts` and `index.client.tsx` are compiled with the DOM lib. Only `client/web.ts` touches browser APIs. The rest of the plugin remains compatible with Paseo's client bundle rules.
 
 ## Contributing
 

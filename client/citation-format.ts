@@ -2,7 +2,6 @@ export const CITATION_HEADER = "[Citation from this conversation]";
 export const CITATION_COMMENT_MARKER = "\n\nComment:\n";
 export const MAX_COMMENT_LENGTH = 20_000;
 export const MAX_QUOTE_LENGTH = 50_000;
-export const MAX_CITATION_TEXT_LENGTH = 100_000;
 
 export interface CitationEntry {
   quote: string;

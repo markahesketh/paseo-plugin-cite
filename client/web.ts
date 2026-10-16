@@ -9,19 +9,12 @@ import {
   replaceCitationInAttachments,
 } from "./citation-attachment";
 import {
-  MAX_CITATION_TEXT_LENGTH,
   createCitationEntry,
   formatCitationEntry,
   normalizeCitationText,
 } from "./citation-format";
 
-type CitationInsertResult =
-  | "attached"
-  | "inserted"
-  | "duplicate"
-  | "too-large"
-  | "not-web"
-  | "composer-not-found";
+type CitationInsertResult = "attached" | "duplicate" | "unavailable";
 
 declare global {
   interface Window {
@@ -238,26 +231,6 @@ function positionPanel(element: HTMLElement, rect: DOMRect): void {
   element.style.top = `${clamp(top, 8, Math.max(8, window.innerHeight - height - 8))}px`;
 }
 
-function dispatchInputEvent(input: HTMLTextAreaElement): void {
-  input.dispatchEvent(new window.Event("input", { bubbles: true }));
-}
-
-function replaceNativeInputValue(input: HTMLTextAreaElement, value: string): void {
-  const prototype = Object.getPrototypeOf(input) as object | null;
-  const descriptor = prototype
-    ? (Object.getOwnPropertyDescriptor(prototype, "value") as
-        | { set?: (nextValue: string) => void }
-        | undefined)
-    : undefined;
-
-  if (descriptor?.set) {
-    descriptor.set.call(input, value);
-  } else {
-    input.value = value;
-  }
-  dispatchInputEvent(input);
-}
-
 function findComposerAttachmentBridge(input: Element): ComposerAttachmentBridge | null {
   for (const fiber of findCommittedFiberPath(input) ?? []) {
     const props = fiber.memoizedProps;
@@ -348,57 +321,27 @@ function highlightCitationText(
   return false;
 }
 
-function tryAttachCitationToComposer(
-  input: HTMLTextAreaElement,
-  entry: CitationEntry,
-): "attached" | "duplicate" | false {
-  const attachmentBridge = findComposerAttachmentBridge(input);
-  if (!attachmentBridge) return false;
-
-  const nextAttachments = addCitationToAttachments(attachmentBridge.attachments, entry);
-  if (nextAttachments === "duplicate") return nextAttachments;
-  try {
-    attachmentBridge.setAttachments(() => nextAttachments);
-    return "attached";
-  } catch {
-    return false;
-  }
-}
-
 export function appendCitationToComposer(
   entry: CitationEntry,
   preferredInput: HTMLTextAreaElement | null = null,
 ): CitationInsertResult {
-  if (!isBrowserRuntime()) {
-    return "not-web";
-  }
-
   const input =
     (preferredInput && elementIsConnected(preferredInput) && elementIsVisible(preferredInput)
       ? preferredInput
       : null) ??
     nearestComposerInput(document.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR), null);
-  if (!input) {
-    return "composer-not-found";
-  }
+  const bridge = input ? findComposerAttachmentBridge(input) : null;
+  if (!input || !bridge) return "unavailable";
 
-  const attachmentResult = tryAttachCitationToComposer(input, entry);
-  if (attachmentResult === "attached") {
-    input.focus();
-    return "attached";
+  const nextAttachments = addCitationToAttachments(bridge.attachments, entry);
+  if (nextAttachments === "duplicate") return "duplicate";
+  try {
+    bridge.setAttachments(() => nextAttachments);
+  } catch {
+    return "unavailable";
   }
-  if (attachmentResult === "duplicate") {
-    return attachmentResult;
-  }
-
-  const formattedCitation = formatCitationEntry(entry);
-  const currentDraft = input.value.trimEnd();
-  const nextDraft = currentDraft ? `${currentDraft}\n\n${formattedCitation}` : formattedCitation;
-  if (nextDraft.length > MAX_CITATION_TEXT_LENGTH) return "too-large";
-  replaceNativeInputValue(input, nextDraft);
   input.focus();
-  input.setSelectionRange(nextDraft.length, nextDraft.length);
-  return "inserted";
+  return "attached";
 }
 
 function setStylesForOverlayRoot(root: HTMLElement): void {
@@ -779,7 +722,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
       return;
     }
     const result = appendCitationToComposer(entry, submittedSelection.composerInput);
-    if (result === "attached" || result === "inserted") {
+    if (result === "attached") {
       citedSelections = citedSelections.filter(
         (cited) =>
           elementIsConnected(cited.anchorElement) &&
@@ -801,20 +744,11 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
       return;
     }
 
-    if (result === "too-large") {
-      showToast("This citation is too large to add.", true);
-      return;
-    }
-
     void options
       .copyFallback(formatCitationEntry(entry))
       .then(() => {
         closePanel();
-        showToast(
-          result === "not-web"
-            ? "Citation copied. Paste it into your message."
-            : "Composer not found. Citation copied for paste.",
-        );
+        showToast("Could not add to the composer. Citation copied for paste.");
       })
       .catch(() => showToast("Could not add or copy the citation.", true));
   };
