@@ -79,7 +79,6 @@ function createOverlay(options: CitationOverlayOptions): () => void {
 
   let state: OverlayState = { kind: "idle" };
   let citedRanges: CitedRange[] = [];
-  let selectionTimer: number | null = null;
   const listeners = new window.AbortController();
   const { signal } = listeners;
 
@@ -108,15 +107,6 @@ function createOverlay(options: CitationOverlayOptions): () => void {
     if (panelOpen()) return;
     const selection = readSelection();
     setState(selection ? { kind: "offer", selection } : { kind: "idle" });
-  };
-  const scheduleSelectionChange = (event: Event): void => {
-    const target = targetElement(event);
-    if (target && root.contains(target)) return;
-    if (selectionTimer !== null) window.clearTimeout(selectionTimer);
-    selectionTimer = window.setTimeout(() => {
-      selectionTimer = null;
-      handleSelectionChange();
-    }, 0);
   };
 
   const openCompose = (event: Event): void => {
@@ -267,8 +257,6 @@ function createOverlay(options: CitationOverlayOptions): () => void {
   const handleWindowChange = (): void => view.reposition(state);
 
   document.addEventListener("selectionchange", handleSelectionChange, { signal });
-  document.addEventListener("pointerup", scheduleSelectionChange, { signal, capture: true });
-  document.addEventListener("keyup", scheduleSelectionChange, { signal, capture: true });
   window.addEventListener("resize", handleWindowChange, { signal });
   window.addEventListener("scroll", handleWindowChange, { signal, capture: true });
   citeButton.addEventListener("mousedown", keepFocus, { signal });
@@ -284,7 +272,6 @@ function createOverlay(options: CitationOverlayOptions): () => void {
 
   return () => {
     listeners.abort();
-    if (selectionTimer !== null) window.clearTimeout(selectionTimer);
     view.dispose();
   };
 }
