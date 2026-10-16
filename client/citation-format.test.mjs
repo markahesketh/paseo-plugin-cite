@@ -2,38 +2,22 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  CITATION_HEADER,
   MAX_QUOTE_LENGTH,
   createCitationEntry,
-  parseCitationEntries,
-  serializeCitationEntries,
+  formatCitationEntry,
+  parseCitationEntry,
 } from "./citation-format.ts";
 
-test("citation text round-trips delimiter-like content", () => {
-  const header = "[Citation from this conversation]";
-  const legacyHeader = "[Citation from your previous answer]";
-  const quote = `before\n${header}\n${legacyHeader}\nafter`;
-  const comment = `first\n\nComment:\nsecond\n${header}\nthird\n\\${legacyHeader}\nfourth`;
-  const text = serializeCitationEntries([{ quote, comment }]);
+test("citation survives format and parse when quote and comment look like the format", () => {
+  const quote = `before\n\nafter\n${CITATION_HEADER}\n> not a quote prefix`;
+  const comment = `first\n\nComment:\nsecond\n${CITATION_HEADER}\nthird`;
 
-  assert.deepEqual(parseCitationEntries(text), [{ quote, comment }]);
+  assert.deepEqual(parseCitationEntry(formatCitationEntry({ quote, comment })), { quote, comment });
 });
 
-test("multiple citations round-trip as separate entries", () => {
-  const text = serializeCitationEntries([
-    { quote: "one", comment: "first" },
-    { quote: "two", comment: "second" },
-  ]);
-
-  assert.deepEqual(parseCitationEntries(text), [
-    { quote: "one", comment: "first" },
-    { quote: "two", comment: "second" },
-  ]);
-});
-
-test("text with the earlier header still parses", () => {
-  const text = "[Citation from your previous answer]\n> one\n\nComment:\nfirst";
-
-  assert.deepEqual(parseCitationEntries(text), [{ quote: "one", comment: "first" }]);
+test("text that is not a citation does not parse", () => {
+  assert.equal(parseCitationEntry("just some text"), null);
 });
 
 test("new citation entry is normalised and rejected when too large", () => {

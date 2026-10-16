@@ -9,8 +9,8 @@
     "client/"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "node --test --experimental-strip-types --import ./test/resolve-ts.mjs client/*.test.mjs"
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.web.json",
+    "test": "node --test --experimental-strip-types --import ./test/resolve-ts.mjs client/*.test.mjs client/web/*.test.mjs"
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.11.4",
