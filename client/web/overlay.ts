@@ -253,7 +253,9 @@ function createOverlay(options: CitationOverlayOptions): () => void {
     event.preventDefault();
     dismiss();
   };
-  const keepFocus = (event: Event): void => event.preventDefault();
+  const keepFocus = (event: Event): void => {
+    if (event.target !== commentInput) event.preventDefault();
+  };
   const handleWindowChange = (): void => view.reposition(state);
 
   document.addEventListener("selectionchange", handleSelectionChange, { signal });
@@ -262,8 +264,7 @@ function createOverlay(options: CitationOverlayOptions): () => void {
   window.addEventListener("resize", handleWindowChange, { signal });
   window.addEventListener("scroll", handleWindowChange, { signal, capture: true });
   citeButton.addEventListener("mousedown", keepFocus, { signal });
-  cancelButton.addEventListener("mousedown", keepFocus, { signal });
-  submitButton.addEventListener("mousedown", keepFocus, { signal });
+  panel.addEventListener("mousedown", keepFocus, { signal });
   citeButton.addEventListener("click", openCompose, { signal });
   cancelButton.addEventListener("click", handleCancel, { signal });
   panel.addEventListener("submit", submit, { signal });

@@ -223,7 +223,6 @@ export function createOverlayView(): OverlayView {
   panel.id = CITE_PANEL_ID;
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-modal", "true");
-  panel.tabIndex = -1;
 
   const quote = element("div", "quote");
   panel.append(quote);
