@@ -105,7 +105,7 @@ paseo plugin install /absolute/path/to/paseo-plugin-cite
 paseo plugin reload paseo-cite
 ```
 
-The test suite covers citation formatting, quote and comment content that looks like the format, size limits, one attachment for each citation, restored attachments, the card text, in-place edits, the copy fallback, the committed React fiber lookup against React DOM, and the cite button and comment edit flow against jsdom and React DOM.
+The test suite covers citation formatting, quote and comment content that looks like the format, size limits, one attachment for each citation, restored attachments, the card text, in-place edits, the copy fallback, the committed React fiber lookup against React DOM, attachment updates the composer has not rendered yet, finding a cited quote in its own conversation, and the cite button and comment edit flow against jsdom and React DOM.
 
 ## Project layout
 
@@ -120,8 +120,11 @@ The test suite covers citation formatting, quote and comment content that looks 
 │   ├── react-fiber.test.mjs          Fiber lookup tests against React DOM
 │   └── web/                          Web-only code, compiled with the DOM lib
 │       ├── composer-bridge.ts        Paseo composer selectors, lookup, and attachment bridge
-│       ├── overlay.ts                Web selection and overlay UI
-│       └── overlay.test.mjs          Overlay tests against jsdom
+│       ├── composer-bridge.test.mjs  Attachment bridge tests against React DOM
+│       ├── overlay.ts                Cite button, comment form, and pill editing UI
+│       ├── overlay.test.mjs          Overlay tests against jsdom
+│       ├── text-range.ts             Selection reading and quote search in the conversation
+│       └── text-range.test.mjs       Quote search tests against jsdom
 ├── test/
 │   └── resolve-ts.mjs                Node import hook for TypeScript imports
 ├── index.client.tsx                  Paseo client entry point

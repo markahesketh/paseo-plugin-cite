@@ -10,11 +10,10 @@ const { window } = dom;
 globalThis.window = window;
 globalThis.document = window.document;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-// jsdom has no layout or text search, so give every element a visible rect.
+// jsdom has no layout, so give every element a visible rect.
 const rect = () => ({ top: 10, left: 10, right: 100, bottom: 30 });
 window.Element.prototype.getBoundingClientRect = rect;
 window.Range.prototype.getBoundingClientRect = rect;
-window.find = () => false;
 
 const { act, createElement: h, useState } = await import("react");
 const { createRoot } = await import("react-dom/client");

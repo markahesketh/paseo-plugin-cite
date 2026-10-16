@@ -1,25 +1,16 @@
 import type { CitationEntry } from "../citation-format";
 import type { CitationFailure } from "./composer-bridge";
+import type { SelectionSnapshot } from "./text-range";
 
+import { createCitationEntry, formatCitationEntry } from "../citation-format";
+import { addCitation, citationForPill, findComposerInput, replaceCitation } from "./composer-bridge";
 import {
-  createCitationEntry,
-  formatCitationEntry,
-  normalizeCitationText,
-} from "../citation-format";
-import {
-  addCitation,
-  citationForPill,
-  COMPOSER_ROOT_SELECTOR,
-  findComposerInput,
-  replaceCitation,
-} from "./composer-bridge";
-
-declare global {
-  interface Window {
-    // Non-standard, so lib.dom omits it.
-    find(text: string, caseSensitive?: boolean, backwards?: boolean, wrapAround?: boolean): boolean;
-  }
-}
+  elementForNode,
+  findQuoteNearComposer,
+  liveRect,
+  rangeShowsQuote,
+  readSelection,
+} from "./text-range";
 
 const OVERLAY_ID = "paseo-cite-overlay";
 const CITE_BUTTON_ID = "paseo-cite-button";
@@ -34,8 +25,6 @@ const RAISED_SURFACE = "var(--colors-surface1, #fafafa)";
 const ACCENT = "var(--colors-accent, #20744a)";
 const ACCENT_FOREGROUND = "var(--colors-accent-foreground, #ffffff)";
 const DESTRUCTIVE = "var(--colors-destructive, #dc2626)";
-const EXCLUDED_SELECTOR = `${COMPOSER_ROOT_SELECTOR}, [data-testid="paseo-cite-overlay"], textarea, input`;
-const SELECTION_CHANGE_SUPPRESSION_MS = 250;
 
 function isBrowserRuntime(): boolean {
   return typeof document !== "undefined" && typeof window !== "undefined";
@@ -43,14 +32,6 @@ function isBrowserRuntime(): boolean {
 
 interface CitationOverlayOptions {
   copyFallback(text: string): Promise<void>;
-}
-
-interface SelectionSnapshot {
-  text: string;
-  rect: DOMRect;
-  range: Range;
-  anchorElement: Element | null;
-  composerInput: HTMLTextAreaElement | null;
 }
 
 interface EditingCitation {
@@ -63,7 +44,6 @@ interface EditingCitation {
 interface CitedSelection {
   text: string;
   range: Range;
-  anchorElement: Element | null;
   composerInput: HTMLTextAreaElement | null;
 }
 
@@ -94,56 +74,12 @@ function createTextElement<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
-function elementForNode(node: Node | null): Element | null {
-  if (!node) return null;
-  return node instanceof window.Element ? node : node.parentElement;
-}
-
 function targetElement(event: Event): Element | null {
   return event.target instanceof window.Element ? event.target : null;
 }
 
 function elementIsConnected(element: Element | null): boolean {
   return Boolean(element && element.isConnected !== false);
-}
-
-function currentSelectionRect(selection: SelectionSnapshot): DOMRect {
-  if (elementIsConnected(selection.anchorElement)) {
-    const rect = selection.range.getBoundingClientRect();
-    if (rect.top !== 0 || rect.left !== 0 || rect.right !== 0 || rect.bottom !== 0) {
-      return rect;
-    }
-  }
-  return selection.rect;
-}
-
-function selectionInsideExcludedElement(selection: Selection): boolean {
-  const anchor = elementForNode(selection.anchorNode);
-  const focus = elementForNode(selection.focusNode);
-  return Boolean(anchor?.closest(EXCLUDED_SELECTOR) || focus?.closest(EXCLUDED_SELECTOR));
-}
-
-function readSelection(): SelectionSnapshot | null {
-  const selection = window.getSelection();
-  if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
-    return null;
-  }
-
-  const text = selection.toString().trim();
-  if (!text || selectionInsideExcludedElement(selection)) {
-    return null;
-  }
-
-  const range = selection.getRangeAt(0);
-  const rect = range.getBoundingClientRect();
-  const anchorElement = elementForNode(range.commonAncestorContainer);
-  return {
-    text,
-    rect,
-    range,
-    anchorElement,
-    composerInput: anchorElement ? findComposerInput(anchorElement, rect) : null,
-  };
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -158,10 +94,6 @@ function positionElement(element: HTMLElement, rect: DOMRect, height: number): v
   element.style.top = `${clamp(top, 8, Math.max(8, window.innerHeight - height - 8))}px`;
 }
 
-function rectIsEmpty(rect: DOMRect): boolean {
-  return rect.top === 0 && rect.left === 0 && rect.right === 0 && rect.bottom === 0;
-}
-
 function positionPanel(element: HTMLElement, rect: DOMRect): void {
   const width = 560;
   const measured = element.getBoundingClientRect();
@@ -170,65 +102,6 @@ function positionPanel(element: HTMLElement, rect: DOMRect): void {
   const top = rect.bottom + 8 + height <= window.innerHeight ? rect.bottom + 8 : rect.top - height - 8;
   element.style.left = `${left}px`;
   element.style.top = `${clamp(top, 8, Math.max(8, window.innerHeight - height - 8))}px`;
-}
-
-function highlightCitationText(
-  text: string,
-  range: Range | null,
-  anchorElement: Element | null,
-): boolean {
-  const selection = window.getSelection();
-  if (!selection) return false;
-
-  const rangeElement = range ? elementForNode(range.commonAncestorContainer) : null;
-  if (
-    range &&
-    elementIsConnected(rangeElement) &&
-    normalizeCitationText(range.toString()) === normalizeCitationText(text)
-  ) {
-    selection.removeAllRanges();
-    selection.addRange(range);
-    rangeElement?.scrollIntoView({ behavior: "smooth", block: "center" });
-    return true;
-  }
-
-  selection.removeAllRanges();
-  const firstLine = text.split("\n").map((line) => line.trim()).find(Boolean) ?? text;
-  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
-  const searchTerms = Array.from(new Set([text, firstLine].filter(Boolean)));
-
-  for (const searchText of searchTerms) {
-    selection.removeAllRanges();
-    for (let attempt = 0; attempt < 64; attempt += 1) {
-      if (!window.find(searchText, false, false, true)) break;
-
-      const anchorNode = selection.anchorNode ?? null;
-      if (anchorElement && !anchorElement.contains(anchorNode)) continue;
-
-      if (searchText === text || lines.length < 2) {
-        elementForNode(anchorNode)?.scrollIntoView({ behavior: "smooth", block: "center" });
-        return true;
-      }
-
-      const startRange = selection.getRangeAt(0);
-      const lastLine = lines[lines.length - 1];
-      if (!window.find(lastLine, false, false, false)) continue;
-
-      const endRange = selection.getRangeAt(0);
-      const endNode = selection.anchorNode ?? null;
-      if (anchorElement && !anchorElement.contains(endNode)) continue;
-
-      const completeRange = document.createRange();
-      completeRange.setStart(startRange.startContainer, startRange.startOffset);
-      completeRange.setEnd(endRange.endContainer, endRange.endOffset);
-      selection.removeAllRanges();
-      selection.addRange(completeRange);
-      elementForNode(anchorNode)?.scrollIntoView({ behavior: "smooth", block: "center" });
-      return true;
-    }
-  }
-
-  return false;
 }
 
 function setStylesForOverlayRoot(root: HTMLElement): void {
@@ -422,19 +295,12 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   document.body.appendChild(root);
 
   let activeSelection: SelectionSnapshot | null = null;
+  let selectionComposerInput: HTMLTextAreaElement | null = null;
   let editingCitation: EditingCitation | null = null;
   let citedSelections: CitedSelection[] = [];
   let previousFocusedElement: HTMLElement | null = null;
   let toastTimer: number | null = null;
-  let ignoreSelectionChangesTimer: number | null = null;
   let selectionCommitTimer: number | null = null;
-
-  const suppressSelectionChanges = (): void => {
-    if (ignoreSelectionChangesTimer !== null) window.clearTimeout(ignoreSelectionChangesTimer);
-    ignoreSelectionChangesTimer = window.setTimeout(() => {
-      ignoreSelectionChangesTimer = null;
-    }, SELECTION_CHANGE_SUPPRESSION_MS);
-  };
 
   const showToast = (notice: Notice): void => {
     const message = MESSAGES[notice];
@@ -468,20 +334,16 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   };
 
   const panelAnchorRect = (): DOMRect | null => {
-    if (activeSelection) return currentSelectionRect(activeSelection);
+    if (activeSelection) return liveRect(activeSelection.range, activeSelection.rect);
     if (!editingCitation) return null;
-    const range = editingCitation.range;
-    if (range && elementIsConnected(elementForNode(range.commonAncestorContainer))) {
-      const rect = range.getBoundingClientRect();
-      if (!rectIsEmpty(rect)) return rect;
-    }
-    return editingCitation.pill.getBoundingClientRect();
+    return liveRect(editingCitation.range, editingCitation.pill.getBoundingClientRect());
   };
 
   const closePanel = (): void => {
     panel.style.display = "none";
     citeButton.style.display = "none";
     activeSelection = null;
+    selectionComposerInput = null;
     editingCitation = null;
     highlightLayer.textContent = "";
 
@@ -512,7 +374,10 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   };
 
   const showPanel = (): void => {
-    if (activeSelection) openPanel("", null);
+    if (!activeSelection) return;
+    const anchor = elementForNode(activeSelection.range.commonAncestorContainer);
+    selectionComposerInput = anchor ? findComposerInput(anchor, activeSelection.rect) : null;
+    openPanel("", null);
   };
 
   const focusablePanelElements = (): NodeListOf<HTMLElement> =>
@@ -532,14 +397,14 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   };
 
   const handleSelectionChange = (): void => {
-    if (ignoreSelectionChangesTimer !== null || panel.style.display === "block") return;
+    if (panel.style.display === "block") return;
     const nextSelection = readSelection();
     activeSelection = nextSelection;
     if (!nextSelection) {
       citeButton.style.display = "none";
       return;
     }
-    positionElement(citeButton, currentSelectionRect(nextSelection), 30);
+    positionElement(citeButton, nextSelection.rect, 30);
     citeButton.style.display = "block";
   };
 
@@ -597,24 +462,20 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     if (!activeSelection) return;
 
     const submittedSelection = activeSelection;
+    const composerInput = selectionComposerInput;
     const entry = createCitationEntry(submittedSelection.text, commentInput.value);
     if (!entry) {
       showToast("too-large");
       return;
     }
-    const result = addCitation(submittedSelection.composerInput, entry);
+    const result = addCitation(composerInput, entry);
     if (result.ok) {
       citedSelections = citedSelections.filter(
         (cited) =>
-          elementIsConnected(cited.anchorElement) &&
-          !(cited.text === entry.quote && cited.composerInput === submittedSelection.composerInput),
+          rangeShowsQuote(cited.range, cited.text) &&
+          !(cited.text === entry.quote && cited.composerInput === composerInput),
       );
-      citedSelections.push({
-        text: entry.quote,
-        range: submittedSelection.range,
-        anchorElement: submittedSelection.anchorElement,
-        composerInput: submittedSelection.composerInput,
-      });
+      citedSelections.push({ text: entry.quote, range: submittedSelection.range, composerInput });
       closePanel();
       return;
     }
@@ -697,20 +558,18 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     event.stopPropagation();
 
     closePanel();
-    const cited = citedSelections.find(
+    const cached = citedSelections.find(
       (selection) => selection.composerInput === input && selection.text === entry.quote,
-    );
-    suppressSelectionChanges();
-
-    const found = highlightCitationText(
-      entry.quote,
-      cited?.range ?? null,
-      cited?.anchorElement ?? null,
-    );
-    const selection = window.getSelection();
+    )?.range;
     const range =
-      found && selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
-    if (!found) showToast("quote-not-found");
+      cached && rangeShowsQuote(cached, entry.quote)
+        ? cached
+        : findQuoteNearComposer(input, entry.quote);
+    if (range) {
+      elementForNode(range.startContainer)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      showToast("quote-not-found");
+    }
     if (!input) return;
 
     editingCitation = { entry, bridgeInput: input, pill, range };
@@ -763,7 +622,6 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     document.removeEventListener("mousedown", handleOutsidePointerDown, true);
     document.removeEventListener("click", handleCitationAttachmentClick, true);
     if (toastTimer !== null) window.clearTimeout(toastTimer);
-    if (ignoreSelectionChangesTimer !== null) window.clearTimeout(ignoreSelectionChangesTimer);
     if (selectionCommitTimer !== null) window.clearTimeout(selectionCommitTimer);
     if (activeOverlayCleanup === cleanup) activeOverlayCleanup = null;
     root.remove();
