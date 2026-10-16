@@ -22,7 +22,7 @@
   ],
   "exclude": [
     "node_modules",
-    "client/web.ts",
+    "client/web",
     "index.client.tsx"
   ]
 }

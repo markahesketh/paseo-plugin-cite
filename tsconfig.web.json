@@ -8,7 +8,7 @@
     ]
   },
   "include": [
-    "client/web.ts",
+    "client/web/**/*.ts",
     "index.client.tsx"
   ],
   "exclude": [

@@ -118,8 +118,10 @@ The test suite covers citation formatting, quote and comment content that looks 
 │   ├── citation-format.test.mjs      Formatting tests
 │   ├── react-fiber.ts                Committed React fiber lookup for the composer bridge
 │   ├── react-fiber.test.mjs          Fiber lookup tests against React DOM
-│   ├── web.test.mjs                  Overlay tests against jsdom
-│   └── web.ts                        Web selection, composer bridge, and overlay UI
+│   └── web/                          Web-only code, compiled with the DOM lib
+│       ├── composer-bridge.ts        Paseo composer selectors, lookup, and attachment bridge
+│       ├── overlay.ts                Web selection and overlay UI
+│       └── overlay.test.mjs          Overlay tests against jsdom
 ├── test/
 │   └── resolve-ts.mjs                Node import hook for TypeScript imports
 ├── index.client.tsx                  Paseo client entry point
@@ -129,7 +131,7 @@ The test suite covers citation formatting, quote and comment content that looks 
 └── tsconfig.web.json                 The same, with the DOM lib, for the web code
 ```
 
-Only `client/web.ts` and `index.client.tsx` are compiled with the DOM lib. Only `client/web.ts` touches browser APIs. The rest of the plugin remains compatible with Paseo's client bundle rules.
+Only `client/web/` and `index.client.tsx` are compiled with the DOM lib. Only `client/web/` touches browser APIs, and only `client/web/composer-bridge.ts` relies on Paseo's private composer DOM and React props. The rest of the plugin remains compatible with Paseo's client bundle rules.
 
 ## Contributing
 

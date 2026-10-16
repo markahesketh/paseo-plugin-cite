@@ -10,9 +10,9 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const { act, createElement: h, useState } = await import("react");
 const { createRoot } = await import("react-dom/client");
-const { findCommittedFiberPath } = await import("./react-fiber.ts");
+const { findFiberProps } = await import("./react-fiber.ts");
 
-test("committed fiber path holds the latest props after each render", async () => {
+test("fiber props are the latest committed props after each render", async () => {
   let setAttachments;
   function Composer({ attachments }) {
     // A controlled textarea changes props on each render, so its fiber alternates.
@@ -29,10 +29,8 @@ test("committed fiber path holds the latest props after each render", async () =
 
   for (const attachments of [["1", "2"], ["1", "2", "3"]]) {
     await act(() => setAttachments(attachments));
-    const composer = findCommittedFiberPath(textarea).find((fiber) =>
-      Array.isArray(fiber.memoizedProps?.attachments),
-    );
-    assert.deepEqual(composer.memoizedProps.attachments, attachments);
+    const props = findFiberProps(textarea, (props) => Array.isArray(props.attachments));
+    assert.deepEqual(props.attachments, attachments);
   }
   await act(() => root.unmount());
 });

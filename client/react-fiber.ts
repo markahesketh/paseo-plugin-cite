@@ -1,4 +1,4 @@
-export interface ReactFiberNode {
+interface ReactFiberNode {
   tag?: number;
   return?: ReactFiberNode | null;
   child?: ReactFiberNode | null;
@@ -27,7 +27,7 @@ function findReactFiber(element: object): ReactFiberNode | null {
 //
 // Returns the committed fibers from the element up to the root, or null if the
 // element is not in the committed tree.
-export function findCommittedFiberPath(element: object): ReactFiberNode[] | null {
+function findCommittedFiberPath(element: object): ReactFiberNode[] | null {
   const cachedPath: ReactFiberNode[] = [];
   for (let fiber = findReactFiber(element); fiber; fiber = fiber.return ?? null) {
     cachedPath.push(fiber);
@@ -49,4 +49,16 @@ export function findCommittedFiberPath(element: object): ReactFiberNode[] | null
     committedPath.push(committed);
   }
   return committedPath.reverse();
+}
+
+// The props of the nearest committed fiber, from the element up to the root, that match.
+export function findFiberProps<Props extends Record<string, unknown>>(
+  element: object,
+  predicate: (props: Record<string, unknown>) => props is Props,
+): Props | null {
+  for (const fiber of findCommittedFiberPath(element) ?? []) {
+    const props = fiber.memoizedProps;
+    if (props && predicate(props)) return props;
+  }
+  return null;
 }

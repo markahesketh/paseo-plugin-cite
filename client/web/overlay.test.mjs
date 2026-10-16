@@ -18,9 +18,9 @@ window.find = () => false;
 
 const { act, createElement: h, useState } = await import("react");
 const { createRoot } = await import("react-dom/client");
-const { citationAttachmentForEntry, citationEntryForAttachment } = await import("./citation-attachment.ts");
-const { formatCitationEntry } = await import("./citation-format.ts");
-const { startCitationOverlay } = await import("./web.ts");
+const { citationAttachmentForEntry, citationEntryForAttachment } = await import("../citation-attachment.ts");
+const { formatCitationEntry } = await import("../citation-format.ts");
+const { startCitationOverlay } = await import("./overlay.ts");
 
 test("adding a citation uses the functional attachment updater", async () => {
   let currentAttachments;

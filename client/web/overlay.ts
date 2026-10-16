@@ -1,20 +1,18 @@
-import type { CitationComposerAttachment } from "./citation-attachment";
-import type { CitationEntry } from "./citation-format";
-import { findCommittedFiberPath } from "./react-fiber";
+import type { CitationEntry } from "../citation-format";
+import type { CitationFailure } from "./composer-bridge";
 
-import {
-  addCitationToAttachments,
-  citationEntryForAttachment,
-  isCitationComposerAttachment,
-  replaceCitationInAttachments,
-} from "./citation-attachment";
 import {
   createCitationEntry,
   formatCitationEntry,
   normalizeCitationText,
-} from "./citation-format";
-
-type CitationInsertResult = "attached" | "duplicate" | "unavailable";
+} from "../citation-format";
+import {
+  addCitation,
+  citationForPill,
+  COMPOSER_ROOT_SELECTOR,
+  findComposerInput,
+  replaceCitation,
+} from "./composer-bridge";
 
 declare global {
   interface Window {
@@ -26,7 +24,6 @@ declare global {
 const OVERLAY_ID = "paseo-cite-overlay";
 const CITE_BUTTON_ID = "paseo-cite-button";
 const CITE_PANEL_ID = "paseo-cite-panel";
-const CITATION_PILL_SELECTOR = '[data-testid="composer-plugin-resource-attachment-pill"]';
 const FONT_STACK =
   'var(--paseo-ui-font, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif)';
 const FOREGROUND = "var(--colors-foreground, #1a1a1e)";
@@ -37,9 +34,7 @@ const RAISED_SURFACE = "var(--colors-surface1, #fafafa)";
 const ACCENT = "var(--colors-accent, #20744a)";
 const ACCENT_FOREGROUND = "var(--colors-accent-foreground, #ffffff)";
 const DESTRUCTIVE = "var(--colors-destructive, #dc2626)";
-const COMPOSER_INPUT_SELECTOR = '[data-testid="message-input-root"] textarea';
-const EXCLUDED_SELECTOR =
-  '[data-testid="message-input-root"], [data-testid="paseo-cite-overlay"], textarea, input';
+const EXCLUDED_SELECTOR = `${COMPOSER_ROOT_SELECTOR}, [data-testid="paseo-cite-overlay"], textarea, input`;
 const SELECTION_CHANGE_SUPPRESSION_MS = 250;
 
 function isBrowserRuntime(): boolean {
@@ -58,11 +53,6 @@ interface SelectionSnapshot {
   composerInput: HTMLTextAreaElement | null;
 }
 
-interface ComposerAttachmentBridge {
-  attachments: unknown[];
-  setAttachments(update: (attachments: unknown[]) => unknown[]): void;
-}
-
 interface EditingCitation {
   entry: CitationEntry;
   bridgeInput: HTMLTextAreaElement;
@@ -76,6 +66,18 @@ interface CitedSelection {
   anchorElement: Element | null;
   composerInput: HTMLTextAreaElement | null;
 }
+
+type Notice = CitationFailure | "too-large" | "copied" | "copy-failed" | "quote-not-found";
+
+const MESSAGES: Record<Notice, { text: string; isError: boolean }> = {
+  duplicate: { text: "This citation is already in the composer.", isError: false },
+  missing: { text: "This citation is no longer in the composer.", isError: true },
+  unavailable: { text: "Could not update the composer.", isError: true },
+  "too-large": { text: "This citation is too large.", isError: true },
+  copied: { text: "Could not add to the composer. Citation copied for paste.", isError: false },
+  "copy-failed": { text: "Could not add or copy the citation.", isError: true },
+  "quote-not-found": { text: "Could not find the cited text in this conversation.", isError: true },
+};
 
 let activeOverlayCleanup: (() => void) | null = null;
 
@@ -103,67 +105,6 @@ function targetElement(event: Event): Element | null {
 
 function elementIsConnected(element: Element | null): boolean {
   return Boolean(element && element.isConnected !== false);
-}
-
-// Hidden panes can stay mounted. Their composers have an empty rect.
-function elementIsVisible(element: Element): boolean {
-  const rect = element.getBoundingClientRect();
-  return rect.right > rect.left && rect.bottom > rect.top;
-}
-
-function nearestComposerInput(
-  candidates: NodeListOf<HTMLTextAreaElement>,
-  referenceRect: DOMRect | null,
-): HTMLTextAreaElement | null {
-  const visibleCandidates = Array.from(candidates).filter(elementIsVisible);
-  return visibleCandidates.reduce<HTMLTextAreaElement | null>((closest, candidate) => {
-    if (!closest || !referenceRect) return closest ?? candidate;
-    return rectDistance(referenceRect, candidate.getBoundingClientRect()) <
-      rectDistance(referenceRect, closest.getBoundingClientRect())
-      ? candidate
-      : closest;
-  }, null);
-}
-
-function findComposerInputNearElement(
-  element: Element | null,
-  referenceRect: DOMRect | null = null,
-): HTMLTextAreaElement | null {
-  let current = element;
-  while (current) {
-    const inputs = current.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR);
-    const input = nearestComposerInput(inputs, referenceRect);
-    if (input) return input;
-    current = current.parentElement;
-  }
-  return null;
-}
-
-function rectDistance(left: DOMRect, right: DOMRect): number {
-  const horizontalDistance =
-    left.right < right.left
-      ? right.left - left.right
-      : right.right < left.left
-        ? left.left - right.right
-        : 0;
-  const verticalDistance =
-    left.bottom < right.top
-      ? right.top - left.bottom
-      : right.bottom < left.top
-        ? left.top - right.bottom
-        : 0;
-  return horizontalDistance ** 2 + verticalDistance ** 2;
-}
-
-function findComposerInputForSelection(
-  anchorElement: Element | null,
-  selectionRect: DOMRect,
-): HTMLTextAreaElement | null {
-  const nearbyInput = findComposerInputNearElement(anchorElement, selectionRect);
-  if (nearbyInput) return nearbyInput;
-
-  const candidates = document.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR);
-  return nearestComposerInput(candidates, selectionRect);
 }
 
 function currentSelectionRect(selection: SelectionSnapshot): DOMRect {
@@ -201,7 +142,7 @@ function readSelection(): SelectionSnapshot | null {
     rect,
     range,
     anchorElement,
-    composerInput: findComposerInputForSelection(anchorElement, rect),
+    composerInput: anchorElement ? findComposerInput(anchorElement, rect) : null,
   };
 }
 
@@ -229,37 +170,6 @@ function positionPanel(element: HTMLElement, rect: DOMRect): void {
   const top = rect.bottom + 8 + height <= window.innerHeight ? rect.bottom + 8 : rect.top - height - 8;
   element.style.left = `${left}px`;
   element.style.top = `${clamp(top, 8, Math.max(8, window.innerHeight - height - 8))}px`;
-}
-
-function findComposerAttachmentBridge(input: Element): ComposerAttachmentBridge | null {
-  for (const fiber of findCommittedFiberPath(input) ?? []) {
-    const props = fiber.memoizedProps;
-    if (
-      props &&
-      Array.isArray(props.attachments) &&
-      typeof props.onChangeAttachments === "function"
-    ) {
-      const updateAttachments = props.onChangeAttachments as (
-        update: (attachments: unknown[]) => unknown[],
-      ) => void;
-      return {
-        attachments: props.attachments,
-        setAttachments: updateAttachments,
-      };
-    }
-  }
-  return null;
-}
-
-// Paseo renders each plugin pill with its own attachment as the "attachment" prop.
-function citationAttachmentForPill(pill: Element): CitationComposerAttachment | null {
-  for (const fiber of findCommittedFiberPath(pill) ?? []) {
-    const attachment = fiber.memoizedProps?.attachment;
-    if (attachment && typeof attachment === "object") {
-      return isCitationComposerAttachment(attachment) ? attachment : null;
-    }
-  }
-  return null;
 }
 
 function highlightCitationText(
@@ -319,29 +229,6 @@ function highlightCitationText(
   }
 
   return false;
-}
-
-export function appendCitationToComposer(
-  entry: CitationEntry,
-  preferredInput: HTMLTextAreaElement | null = null,
-): CitationInsertResult {
-  const input =
-    (preferredInput && elementIsConnected(preferredInput) && elementIsVisible(preferredInput)
-      ? preferredInput
-      : null) ??
-    nearestComposerInput(document.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR), null);
-  const bridge = input ? findComposerAttachmentBridge(input) : null;
-  if (!input || !bridge) return "unavailable";
-
-  const nextAttachments = addCitationToAttachments(bridge.attachments, entry);
-  if (nextAttachments === "duplicate") return "duplicate";
-  try {
-    bridge.setAttachments(() => nextAttachments);
-  } catch {
-    return "unavailable";
-  }
-  input.focus();
-  return "attached";
 }
 
 function setStylesForOverlayRoot(root: HTMLElement): void {
@@ -549,9 +436,10 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     }, SELECTION_CHANGE_SUPPRESSION_MS);
   };
 
-  const showToast = (message: string, isError = false): void => {
-    toast.textContent = message;
-    toast.style.color = isError ? DESTRUCTIVE : FOREGROUND;
+  const showToast = (notice: Notice): void => {
+    const message = MESSAGES[notice];
+    toast.textContent = message.text;
+    toast.style.color = message.isError ? DESTRUCTIVE : FOREGROUND;
     toast.style.display = "block";
     if (toastTimer !== null) window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => {
@@ -682,7 +570,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   const saveEditedCitation = (editing: EditingCitation): void => {
     const entry = createCitationEntry(editing.entry.quote, commentInput.value);
     if (!entry) {
-      showToast("This comment is too large to save.", true);
+      showToast("too-large");
       return;
     }
     if (entry.comment === editing.entry.comment) {
@@ -690,20 +578,13 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
       return;
     }
 
-    const bridge = findComposerAttachmentBridge(editing.bridgeInput);
-    const result = bridge
-      ? replaceCitationInAttachments(bridge.attachments, editing.entry, entry)
-      : "missing";
-    if (result === "duplicate") {
-      showToast("This citation is already in the composer.");
+    const result = replaceCitation(editing.bridgeInput, editing.entry, entry);
+    if (!result.ok && result.reason === "duplicate") {
+      showToast(result.reason);
       return;
     }
     closePanel();
-    if (result === "missing" || !bridge) {
-      showToast("This citation is no longer in the composer.", true);
-      return;
-    }
-    bridge.setAttachments(() => result);
+    if (!result.ok) showToast(result.reason);
   };
 
   const handleSubmit = (event: Event): void => {
@@ -718,11 +599,11 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     const submittedSelection = activeSelection;
     const entry = createCitationEntry(submittedSelection.text, commentInput.value);
     if (!entry) {
-      showToast("This citation is too large to add.", true);
+      showToast("too-large");
       return;
     }
-    const result = appendCitationToComposer(entry, submittedSelection.composerInput);
-    if (result === "attached") {
+    const result = addCitation(submittedSelection.composerInput, entry);
+    if (result.ok) {
       citedSelections = citedSelections.filter(
         (cited) =>
           elementIsConnected(cited.anchorElement) &&
@@ -738,9 +619,9 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
       return;
     }
 
-    if (result === "duplicate") {
+    if (result.reason !== "unavailable") {
       closePanel();
-      showToast("This citation is already in the composer.");
+      showToast(result.reason);
       return;
     }
 
@@ -748,9 +629,9 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
       .copyFallback(formatCitationEntry(entry))
       .then(() => {
         closePanel();
-        showToast("Could not add to the composer. Citation copied for paste.");
+        showToast("copied");
       })
-      .catch(() => showToast("Could not add or copy the citation.", true));
+      .catch(() => showToast("copy-failed"));
   };
   const handleCommentInput = (): void => {
     updateSubmitButton();
@@ -807,24 +688,20 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     }
   };
   const handleCitationAttachmentClick = (event: MouseEvent): void => {
-    const pill = targetElement(event)?.closest(CITATION_PILL_SELECTOR) ?? null;
-    const attachment = pill ? citationAttachmentForPill(pill) : null;
-    if (!pill || !attachment) return;
+    const target = targetElement(event);
+    const citation = target ? citationForPill(target) : null;
+    if (!citation) return;
+    const { pill, entry, input } = citation;
 
     event.preventDefault();
     event.stopPropagation();
 
     closePanel();
-    const input = findComposerInputNearElement(pill.parentElement ?? pill, pill.getBoundingClientRect());
-    const bridge = input ? findComposerAttachmentBridge(input) : null;
-
-    const entry = citationEntryForAttachment(attachment);
     const cited = citedSelections.find(
-      (selection) => selection.composerInput === input && selection.text === entry?.quote,
+      (selection) => selection.composerInput === input && selection.text === entry.quote,
     );
     suppressSelectionChanges();
 
-    if (!entry) return;
     const found = highlightCitationText(
       entry.quote,
       cited?.range ?? null,
@@ -833,8 +710,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     const selection = window.getSelection();
     const range =
       found && selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
-    if (!found) showToast("Could not find the cited text in this conversation.", true);
-    if (!input || !bridge) return;
+    if (!found) showToast("quote-not-found");
+    if (!input) return;
 
     editingCitation = { entry, bridgeInput: input, pill, range };
     drawEditHighlight();
