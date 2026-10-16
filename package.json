@@ -13,7 +13,7 @@
     "test": "node --test --experimental-strip-types --import ./test/resolve-ts.mjs client/*.test.mjs"
   },
   "devDependencies": {
-    "@getpaseo/plugin": "0.9.1",
+    "@getpaseo/plugin": "0.11.4",
     "@tanstack/react-query": "^5.90.11",
     "@types/react": "~19.1.0",
     "jsdom": "^25.0.1",

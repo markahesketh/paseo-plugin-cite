@@ -1,6 +1,6 @@
 {
   "id": "paseo-cite",
   "requirements": {
-    "paseo": ">=0.9.1"
+    "paseo": ">=0.11.0"
   }
 }

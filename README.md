@@ -19,7 +19,7 @@ Select part of an assistant reply, choose **Cite**, write a comment, and submit 
 
 ## Requirements
 
-- Paseo `>=0.9.1`.
+- Paseo `>=0.11.0`.
 - Paseo desktop or web client.
 - Plugins enabled in Paseo.
 
@@ -74,7 +74,7 @@ The plugin stores each citation entry as structured data inside its composer att
 
 ### Queued messages
 
-Paseo `0.9.1` preserves the citation attachment when a message is queued, but its queue row displays only the message text. The citation can therefore be hidden in the queue until Paseo renders queued attachments. The plugin does not add fake text to the prompt to work around this, because that would change the message sent to the agent.
+Paseo preserves the citation attachment when a message is queued, but its queue row displays only the message text. The citation can therefore be hidden in the queue until Paseo renders queued attachments. The plugin does not add fake text to the prompt to work around this, because that would change the message sent to the agent.
 
 ### Web composer integration
 

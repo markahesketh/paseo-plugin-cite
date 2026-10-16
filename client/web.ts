@@ -179,7 +179,7 @@ interface SelectionSnapshot {
 
 interface ComposerAttachmentBridge {
   attachments: unknown[];
-  setAttachments(nextAttachments: unknown[]): void;
+  setAttachments(update: (attachments: unknown[]) => unknown[]): void;
 }
 
 interface EditingCitation {
@@ -375,9 +375,12 @@ function findComposerAttachmentBridge(input: DomElement): ComposerAttachmentBrid
       Array.isArray(props.attachments) &&
       typeof props.onChangeAttachments === "function"
     ) {
+      const updateAttachments = props.onChangeAttachments as (
+        update: (attachments: unknown[]) => unknown[],
+      ) => void;
       return {
         attachments: props.attachments,
-        setAttachments: props.onChangeAttachments as (nextAttachments: unknown[]) => void,
+        setAttachments: updateAttachments,
       };
     }
   }
@@ -386,7 +389,7 @@ function findComposerAttachmentBridge(input: DomElement): ComposerAttachmentBrid
 
 function migrateBridgeCitationAttachments(bridge: ComposerAttachmentBridge): void {
   const nextAttachments = normalizeCitationAttachments(bridge.attachments);
-  if (nextAttachments) bridge.setAttachments(nextAttachments);
+  if (nextAttachments) bridge.setAttachments(() => nextAttachments);
 }
 
 // Paseo renders each plugin pill with its own attachment as the "attachment" prop.
@@ -469,7 +472,7 @@ function tryAttachCitationToComposer(
   const nextAttachments = addCitationToAttachments(attachmentBridge.attachments, entry);
   if (nextAttachments === "duplicate") return nextAttachments;
   try {
-    attachmentBridge.setAttachments(nextAttachments);
+    attachmentBridge.setAttachments(() => nextAttachments);
     return "attached";
   } catch {
     return false;
@@ -869,7 +872,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
       showToast("This citation is no longer in the composer.", true);
       return;
     }
-    bridge.setAttachments(result);
+    bridge.setAttachments(() => result);
   };
 
   const handleSubmit: DomListener = (event) => {

@@ -21,25 +21,68 @@ const { createRoot } = await import("react-dom/client");
 const { citationAttachmentForEntry } = await import("./citation-attachment.ts");
 const { startCitationOverlay } = await import("./web.ts");
 
-test("selecting conversation text shows the cite button", () => {
+test("adding a citation uses the functional attachment updater", async () => {
+  let currentAttachments;
+  function Composer({ attachments, onChangeAttachments }) {
+    return h(
+      "div",
+      { "data-testid": "message-input-root" },
+      attachments.map((attachment) =>
+        h("div", {
+          key: attachment.item.id,
+          "data-testid": "composer-plugin-resource-attachment-pill",
+        }),
+      ),
+      h("textarea"),
+    );
+  }
+  function App() {
+    const [attachments, setAttachments] = useState([]);
+    currentAttachments = attachments;
+    return h(Composer, {
+      attachments,
+      onChangeAttachments: (update) => setAttachments((current) => update(current)),
+    });
+  }
+  document.querySelector('[data-testid="message-input-root"]').remove();
+  const root = createRoot(document.getElementById("app"));
+  await act(() => root.render(h(App)));
   const stop = startCitationOverlay({ async copyFallback() {} });
-  const range = document.createRange();
-  range.selectNodeContents(document.getElementById("answer"));
-  window.getSelection().addRange(range);
+  try {
+    const range = document.createRange();
+    range.selectNodeContents(document.getElementById("answer"));
+    window.getSelection().addRange(range);
 
-  document.dispatchEvent(new window.Event("selectionchange"));
+    document.dispatchEvent(new window.Event("selectionchange"));
 
-  assert.equal(document.getElementById("paseo-cite-button").style.display, "block");
-  window.getSelection().removeAllRanges();
-  stop();
+    assert.equal(document.getElementById("paseo-cite-button").style.display, "block");
+    await act(() =>
+      document
+        .getElementById("paseo-cite-button")
+        .dispatchEvent(new window.MouseEvent("click", { bubbles: true })),
+    );
+    const panel = document.getElementById("paseo-cite-panel");
+    assert.equal(panel.style.display, "block");
+    panel.querySelector("textarea").value = "Check this claim.";
+    await act(() => panel.dispatchEvent(new window.Event("submit", { cancelable: true })));
+
+    assert.equal(currentAttachments.length, 1);
+    assert.deepEqual(currentAttachments[0].citations, [
+      { quote: "The answer is forty two.", comment: "Check this claim." },
+    ]);
+  } finally {
+    window.getSelection().removeAllRanges();
+    stop();
+    await act(() => root.unmount());
+  }
 });
 
 test("editing a citation pill changes only that citation", async () => {
   let currentAttachments;
-  // Paseo passes each pill its attachment, and the composer root its attachment setter.
+  // Paseo passes each pill its attachment and accepts functional composer updates.
   const Pill = ({ attachment }) =>
     h("div", { "data-testid": "composer-plugin-resource-attachment-pill" }, attachment.item.title);
-  function Composer({ attachments }) {
+  function Composer({ attachments, onChangeAttachments }) {
     return h(
       "div",
       { "data-testid": "message-input-root" },
@@ -53,7 +96,10 @@ test("editing a citation pill changes only that citation", async () => {
       citationAttachmentForEntry({ quote: "two", comment: "second" }),
     ]);
     currentAttachments = attachments;
-    return h(Composer, { attachments, onChangeAttachments: setAttachments });
+    return h(Composer, {
+      attachments,
+      onChangeAttachments: (update) => setAttachments((current) => update(current)),
+    });
   }
   const root = createRoot(document.getElementById("app"));
   await act(() => root.render(h(App)));
