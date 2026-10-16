@@ -50,19 +50,27 @@ test("a quote that is not in the scope has no range", () => {
   assert.equal(findQuoteRange(scope, "forty three"), null);
 });
 
-test("a quote is found in the composer's own pane before the rest of the page", () => {
-  render(`<nav id="sidebar">shared text</nav><main><div><p id="message">shared text</p></div>${COMPOSER}</main>`);
+test("a quote is found in a message of the composer's own pane", () => {
+  render(`<main><div data-testid="assistant-message"><p id="message">shared text</p></div>${COMPOSER}</main>`);
 
   const range = findQuoteNearComposer(document.querySelector("textarea"), "shared text");
 
   assert.equal(range?.startContainer.parentElement.id, "message");
 });
 
-test("a quote in another pane is not found from this composer", () => {
+test("text outside the conversation messages is not a quote match", () => {
   render(
-    `<section id="this"><p>this pane</p>${COMPOSER}</section>` +
-      `<section id="other"><p>other pane</p>${COMPOSER}</section>`,
+    `<nav>sidebar only</nav>` +
+      `<main><div data-testid="assistant-message"><p>an answer</p></div>${COMPOSER}</main>`,
   );
+
+  assert.equal(findQuoteNearComposer(document.querySelector("textarea"), "sidebar only"), null);
+});
+
+test("a quote in another pane is not found from this composer", () => {
+  const pane = (id) =>
+    `<section id="${id}"><div data-testid="assistant-message"><p>${id} pane</p></div>${COMPOSER}</section>`;
+  render(pane("this") + pane("other"));
 
   assert.equal(findQuoteNearComposer(document.querySelector("#this textarea"), "other pane"), null);
 });
