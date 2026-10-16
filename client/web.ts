@@ -1,5 +1,3 @@
-import { Platform } from "react-native";
-
 import type { CitationComposerAttachment } from "./citation-attachment";
 import type { CitationEntry } from "./citation-format";
 import { findCommittedFiberPath } from "./react-fiber";
@@ -159,10 +157,7 @@ const EXCLUDED_SELECTOR =
 const SELECTION_CHANGE_SUPPRESSION_MS = 250;
 
 function isBrowserRuntime(): boolean {
-  return (
-    Platform.OS === "web" ||
-    (typeof document !== "undefined" && typeof window !== "undefined")
-  );
+  return typeof document !== "undefined" && typeof window !== "undefined";
 }
 
 interface CitationOverlayOptions {
