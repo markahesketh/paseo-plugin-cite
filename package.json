@@ -9,7 +9,7 @@
     "client/"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.web.json",
     "test": "node --test --experimental-strip-types --import ./test/resolve-ts.mjs client/*.test.mjs"
   },
   "devDependencies": {

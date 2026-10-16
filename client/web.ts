@@ -26,116 +26,12 @@ type CitationInsertResult =
   | "not-web"
   | "composer-not-found";
 
-interface DomEvent {
-  altKey?: boolean;
-  isComposing?: boolean;
-  key?: string;
-  keyCode?: number;
-  preventDefault(): void;
-  shiftKey?: boolean;
-  stopPropagation(): void;
-  target?: DomElement | null;
+declare global {
+  interface Window {
+    // Non-standard, so lib.dom omits it.
+    find(text: string, caseSensitive?: boolean, backwards?: boolean, wrapAround?: boolean): boolean;
+  }
 }
-
-type DomListener = (event: DomEvent) => void;
-
-// querySelectorAll returns a NodeList, which has no array methods.
-type DomNodeList<T> = ArrayLike<T> & Iterable<T>;
-
-interface DomElement {
-  id: string;
-  isConnected?: boolean;
-  value?: string;
-  textContent: string | null;
-  style: Record<string, string>;
-  parentElement: DomElement | null;
-  appendChild(child: DomElement): void;
-  remove(): void;
-  focus(): void;
-  contains(node: unknown): boolean;
-  getBoundingClientRect(): DomRect;
-  querySelector(selector: string): DomElement | null;
-  querySelectorAll(selector: string): DomNodeList<DomElement>;
-  scrollIntoView(options?: { behavior?: string; block?: string }): void;
-  closest(selector: string): DomElement | null;
-  getAttribute(name: string): string | null;
-  setAttribute(name: string, value: string): void;
-  removeAttribute(name: string): void;
-  addEventListener(type: string, listener: DomListener, options?: boolean): void;
-  removeEventListener(type: string, listener: DomListener, options?: boolean): void;
-  dispatchEvent(event: unknown): boolean;
-}
-
-interface DomTextInput extends DomElement {
-  value: string;
-  selectionStart: number | null;
-  selectionEnd: number | null;
-  setSelectionRange(start: number, end: number): void;
-}
-
-interface DomRect {
-  top: number;
-  left: number;
-  right: number;
-  bottom: number;
-}
-
-interface DomRange {
-  commonAncestorContainer: DomElement;
-  startContainer: DomElement;
-  startOffset: number;
-  endContainer: DomElement;
-  endOffset: number;
-  cloneRange(): DomRange;
-  getBoundingClientRect(): DomRect;
-  getClientRects(): ArrayLike<DomRect>;
-  setStart(container: DomElement, offset: number): void;
-  setEnd(container: DomElement, offset: number): void;
-  toString(): string;
-}
-
-interface DomSelection {
-  isCollapsed: boolean;
-  anchorNode: DomElement | null;
-  focusNode: DomElement | null;
-  rangeCount: number;
-  getRangeAt(index: number): DomRange;
-  addRange(range: DomRange): void;
-  removeAllRanges(): void;
-  toString(): string;
-}
-
-interface DomDocument {
-  activeElement: DomElement | null;
-  body: DomElement;
-  createElement(tagName: string): DomElement;
-  createRange(): DomRange;
-  getElementById(id: string): DomElement | null;
-  querySelector(selector: string): DomElement | null;
-  querySelectorAll(selector: string): DomNodeList<DomElement>;
-  addEventListener(type: string, listener: DomListener, options?: boolean): void;
-  removeEventListener(type: string, listener: DomListener, options?: boolean): void;
-}
-
-interface DomWindow {
-  Event: new (type: string, init?: { bubbles?: boolean }) => unknown;
-  getSelection(): DomSelection | null;
-  find(
-    text: string,
-    caseSensitive?: boolean,
-    backwards?: boolean,
-    wrapAround?: boolean,
-  ): boolean;
-  innerWidth: number;
-  innerHeight: number;
-  addEventListener(type: string, listener: DomListener, options?: boolean): void;
-  removeEventListener(type: string, listener: DomListener, options?: boolean): void;
-  setTimeout(handler: () => void, timeout: number): unknown;
-  clearTimeout(handle: unknown): void;
-}
-
-declare const document: DomDocument;
-declare const window: DomWindow;
 
 const OVERLAY_ID = "paseo-cite-overlay";
 const CITE_BUTTON_ID = "paseo-cite-button";
@@ -166,10 +62,10 @@ interface CitationOverlayOptions {
 
 interface SelectionSnapshot {
   text: string;
-  rect: DomRect;
-  range: DomRange;
-  anchorElement: DomElement | null;
-  composerInput: DomTextInput | null;
+  rect: DOMRect;
+  range: Range;
+  anchorElement: Element | null;
+  composerInput: HTMLTextAreaElement | null;
 }
 
 interface ComposerAttachmentBridge {
@@ -179,55 +75,58 @@ interface ComposerAttachmentBridge {
 
 interface EditingCitation {
   entry: CitationEntry;
-  bridgeInput: DomTextInput;
-  pill: DomElement;
-  range: DomRange | null;
+  bridgeInput: HTMLTextAreaElement;
+  pill: Element;
+  range: Range | null;
 }
 
 interface CitedSelection {
   text: string;
-  range: DomRange;
-  anchorElement: DomElement | null;
-  composerInput: DomTextInput | null;
+  range: Range;
+  anchorElement: Element | null;
+  composerInput: HTMLTextAreaElement | null;
 }
 
 let activeOverlayCleanup: (() => void) | null = null;
 
-function setStyles(element: DomElement, styles: Record<string, string>): void {
+function setStyles(element: HTMLElement, styles: Record<string, string>): void {
   Object.assign(element.style, styles);
 }
 
-function createTextElement(tagName: string, text: string): DomElement {
+function createTextElement<K extends keyof HTMLElementTagNameMap>(
+  tagName: K,
+  text: string,
+): HTMLElementTagNameMap[K] {
   const element = document.createElement(tagName);
   element.textContent = text;
   return element;
 }
 
-function addChild(parent: DomElement, child: DomElement): DomElement {
-  parent.appendChild(child);
-  return child;
+function elementForNode(node: Node | null): Element | null {
+  if (!node) return null;
+  return node instanceof window.Element ? node : node.parentElement;
 }
 
-function elementForNode(node: DomElement | null): DomElement | null {
-  return node?.parentElement ?? node;
+function targetElement(event: Event): Element | null {
+  return event.target instanceof window.Element ? event.target : null;
 }
 
-function elementIsConnected(element: DomElement | null): boolean {
+function elementIsConnected(element: Element | null): boolean {
   return Boolean(element && element.isConnected !== false);
 }
 
 // Hidden panes can stay mounted. Their composers have an empty rect.
-function elementIsVisible(element: DomElement): boolean {
+function elementIsVisible(element: Element): boolean {
   const rect = element.getBoundingClientRect();
   return rect.right > rect.left && rect.bottom > rect.top;
 }
 
 function nearestComposerInput(
-  candidates: DomNodeList<DomTextInput>,
-  referenceRect: DomRect | null,
-): DomTextInput | null {
+  candidates: NodeListOf<HTMLTextAreaElement>,
+  referenceRect: DOMRect | null,
+): HTMLTextAreaElement | null {
   const visibleCandidates = Array.from(candidates).filter(elementIsVisible);
-  return visibleCandidates.reduce<DomTextInput | null>((closest, candidate) => {
+  return visibleCandidates.reduce<HTMLTextAreaElement | null>((closest, candidate) => {
     if (!closest || !referenceRect) return closest ?? candidate;
     return rectDistance(referenceRect, candidate.getBoundingClientRect()) <
       rectDistance(referenceRect, closest.getBoundingClientRect())
@@ -237,12 +136,12 @@ function nearestComposerInput(
 }
 
 function findComposerInputNearElement(
-  element: DomElement | null,
-  referenceRect: DomRect | null = null,
-): DomTextInput | null {
+  element: Element | null,
+  referenceRect: DOMRect | null = null,
+): HTMLTextAreaElement | null {
   let current = element;
   while (current) {
-    const inputs = current.querySelectorAll(COMPOSER_INPUT_SELECTOR) as DomNodeList<DomTextInput>;
+    const inputs = current.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR);
     const input = nearestComposerInput(inputs, referenceRect);
     if (input) return input;
     current = current.parentElement;
@@ -250,7 +149,7 @@ function findComposerInputNearElement(
   return null;
 }
 
-function rectDistance(left: DomRect, right: DomRect): number {
+function rectDistance(left: DOMRect, right: DOMRect): number {
   const horizontalDistance =
     left.right < right.left
       ? right.left - left.right
@@ -267,17 +166,17 @@ function rectDistance(left: DomRect, right: DomRect): number {
 }
 
 function findComposerInputForSelection(
-  anchorElement: DomElement | null,
-  selectionRect: DomRect,
-): DomTextInput | null {
+  anchorElement: Element | null,
+  selectionRect: DOMRect,
+): HTMLTextAreaElement | null {
   const nearbyInput = findComposerInputNearElement(anchorElement, selectionRect);
   if (nearbyInput) return nearbyInput;
 
-  const candidates = document.querySelectorAll(COMPOSER_INPUT_SELECTOR) as DomNodeList<DomTextInput>;
+  const candidates = document.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR);
   return nearestComposerInput(candidates, selectionRect);
 }
 
-function currentSelectionRect(selection: SelectionSnapshot): DomRect {
+function currentSelectionRect(selection: SelectionSnapshot): DOMRect {
   if (elementIsConnected(selection.anchorElement)) {
     const rect = selection.range.getBoundingClientRect();
     if (rect.top !== 0 || rect.left !== 0 || rect.right !== 0 || rect.bottom !== 0) {
@@ -287,7 +186,7 @@ function currentSelectionRect(selection: SelectionSnapshot): DomRect {
   return selection.rect;
 }
 
-function selectionInsideExcludedElement(selection: DomSelection): boolean {
+function selectionInsideExcludedElement(selection: Selection): boolean {
   const anchor = elementForNode(selection.anchorNode);
   const focus = elementForNode(selection.focusNode);
   return Boolean(anchor?.closest(EXCLUDED_SELECTOR) || focus?.closest(EXCLUDED_SELECTOR));
@@ -320,7 +219,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-function positionElement(element: DomElement, rect: DomRect, height: number): void {
+function positionElement(element: HTMLElement, rect: DOMRect, height: number): void {
   const width = 78;
   const left = clamp(rect.left, 8, Math.max(8, window.innerWidth - width - 8));
   const top = rect.top - height - 8 >= 8 ? rect.top - height - 8 : rect.bottom + 8;
@@ -328,11 +227,11 @@ function positionElement(element: DomElement, rect: DomRect, height: number): vo
   element.style.top = `${clamp(top, 8, Math.max(8, window.innerHeight - height - 8))}px`;
 }
 
-function rectIsEmpty(rect: DomRect): boolean {
+function rectIsEmpty(rect: DOMRect): boolean {
   return rect.top === 0 && rect.left === 0 && rect.right === 0 && rect.bottom === 0;
 }
 
-function positionPanel(element: DomElement, rect: DomRect): void {
+function positionPanel(element: HTMLElement, rect: DOMRect): void {
   const width = 560;
   const measured = element.getBoundingClientRect();
   const height = measured.bottom - measured.top || 214;
@@ -342,11 +241,11 @@ function positionPanel(element: DomElement, rect: DomRect): void {
   element.style.top = `${clamp(top, 8, Math.max(8, window.innerHeight - height - 8))}px`;
 }
 
-function dispatchInputEvent(input: DomTextInput): void {
+function dispatchInputEvent(input: HTMLTextAreaElement): void {
   input.dispatchEvent(new window.Event("input", { bubbles: true }));
 }
 
-function replaceNativeInputValue(input: DomTextInput, value: string): void {
+function replaceNativeInputValue(input: HTMLTextAreaElement, value: string): void {
   const prototype = Object.getPrototypeOf(input) as object | null;
   const descriptor = prototype
     ? (Object.getOwnPropertyDescriptor(prototype, "value") as
@@ -362,7 +261,7 @@ function replaceNativeInputValue(input: DomTextInput, value: string): void {
   dispatchInputEvent(input);
 }
 
-function findComposerAttachmentBridge(input: DomElement): ComposerAttachmentBridge | null {
+function findComposerAttachmentBridge(input: Element): ComposerAttachmentBridge | null {
   for (const fiber of findCommittedFiberPath(input) ?? []) {
     const props = fiber.memoizedProps;
     if (
@@ -388,7 +287,7 @@ function migrateBridgeCitationAttachments(bridge: ComposerAttachmentBridge): voi
 }
 
 // Paseo renders each plugin pill with its own attachment as the "attachment" prop.
-function citationAttachmentForPill(pill: DomElement): CitationComposerAttachment | null {
+function citationAttachmentForPill(pill: Element): CitationComposerAttachment | null {
   for (const fiber of findCommittedFiberPath(pill) ?? []) {
     const attachment = fiber.memoizedProps?.attachment;
     if (attachment && typeof attachment === "object") {
@@ -400,8 +299,8 @@ function citationAttachmentForPill(pill: DomElement): CitationComposerAttachment
 
 function highlightCitationText(
   text: string,
-  range: DomRange | null,
-  anchorElement: DomElement | null,
+  range: Range | null,
+  anchorElement: Element | null,
 ): boolean {
   const selection = window.getSelection();
   if (!selection) return false;
@@ -458,7 +357,7 @@ function highlightCitationText(
 }
 
 function tryAttachCitationToComposer(
-  input: DomTextInput,
+  input: HTMLTextAreaElement,
   entry: CitationEntry,
 ): "attached" | "duplicate" | false {
   const attachmentBridge = findComposerAttachmentBridge(input);
@@ -476,7 +375,7 @@ function tryAttachCitationToComposer(
 
 export function appendCitationToComposer(
   entry: CitationEntry,
-  preferredInput: DomTextInput | null = null,
+  preferredInput: HTMLTextAreaElement | null = null,
 ): CitationInsertResult {
   if (!isBrowserRuntime()) {
     return "not-web";
@@ -486,7 +385,7 @@ export function appendCitationToComposer(
     (preferredInput && elementIsConnected(preferredInput) && elementIsVisible(preferredInput)
       ? preferredInput
       : null) ??
-    nearestComposerInput(document.querySelectorAll(COMPOSER_INPUT_SELECTOR) as DomNodeList<DomTextInput>, null);
+    nearestComposerInput(document.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR), null);
   if (!input) {
     return "composer-not-found";
   }
@@ -511,7 +410,7 @@ export function appendCitationToComposer(
   return "inserted";
 }
 
-function setStylesForOverlayRoot(root: DomElement): void {
+function setStylesForOverlayRoot(root: HTMLElement): void {
   setStyles(root, {
     fontFamily: FONT_STACK,
     position: "fixed",
@@ -521,7 +420,7 @@ function setStylesForOverlayRoot(root: DomElement): void {
   });
 }
 
-function styleButton(button: DomElement): void {
+function styleButton(button: HTMLElement): void {
   setStyles(button, {
     position: "fixed",
     pointerEvents: "auto",
@@ -542,7 +441,7 @@ function styleButton(button: DomElement): void {
   });
 }
 
-function stylePanel(panel: DomElement): void {
+function stylePanel(panel: HTMLElement): void {
   setStyles(panel, {
     position: "fixed",
     width: "560px",
@@ -563,7 +462,7 @@ function stylePanel(panel: DomElement): void {
   });
 }
 
-function styleTextArea(textarea: DomElement): void {
+function styleTextArea(textarea: HTMLElement): void {
   setStyles(textarea, {
     display: "block",
     width: "100%",
@@ -583,7 +482,7 @@ function styleTextArea(textarea: DomElement): void {
   });
 }
 
-function styleActionButton(button: DomElement, primary: boolean): void {
+function styleActionButton(button: HTMLElement, primary: boolean): void {
   setStyles(button, {
     padding: primary ? "8px 16px" : "8px",
     border: "1px solid transparent",
@@ -613,14 +512,16 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   root.setAttribute("data-testid", OVERLAY_ID);
   setStylesForOverlayRoot(root);
 
-  const citeButton = addChild(root, createTextElement("button", "Cite"));
+  const citeButton = createTextElement("button", "Cite");
+  root.append(citeButton);
   citeButton.id = CITE_BUTTON_ID;
   citeButton.setAttribute("type", "button");
   citeButton.setAttribute("aria-label", "Cite selected answer text");
   styleButton(citeButton);
   citeButton.style.display = "none";
 
-  const panel = addChild(root, document.createElement("form"));
+  const panel = document.createElement("form");
+  root.append(panel);
   panel.id = CITE_PANEL_ID;
   panel.setAttribute("role", "dialog");
   panel.setAttribute("aria-modal", "true");
@@ -630,7 +531,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   panel.style.display = "none";
 
   // Shows the full quote when you edit a citation, because the pill shows only part of it.
-  const quoteText = addChild(panel, document.createElement("div"));
+  const quoteText = document.createElement("div");
+  panel.append(quoteText);
   setStyles(quoteText, {
     display: "none",
     margin: "0 0 10px",
@@ -644,26 +546,31 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     whiteSpace: "pre-wrap",
   });
 
-  const commentInput = addChild(panel, document.createElement("textarea")) as DomTextInput;
+  const commentInput = document.createElement("textarea");
+  panel.append(commentInput);
   commentInput.setAttribute("aria-label", "Citation comment");
   commentInput.setAttribute("placeholder", "Leave a comment");
   styleTextArea(commentInput);
 
-  const actions = addChild(panel, document.createElement("div"));
+  const actions = document.createElement("div");
+  panel.append(actions);
   setStyles(actions, { display: "flex", justifyContent: "flex-end", gap: "20px" });
 
-  const cancelButton = addChild(actions, createTextElement("button", "Cancel"));
+  const cancelButton = createTextElement("button", "Cancel");
+  actions.append(cancelButton);
   cancelButton.setAttribute("type", "button");
   styleActionButton(cancelButton, false);
 
-  const submitButton = addChild(actions, createTextElement("button", "Comment"));
+  const submitButton = createTextElement("button", "Comment");
+  actions.append(submitButton);
   submitButton.setAttribute("type", "submit");
   submitButton.setAttribute("disabled", "");
   styleActionButton(submitButton, true);
   submitButton.style.opacity = "0.48";
   submitButton.style.cursor = "default";
 
-  const toast = addChild(root, createTextElement("div", ""));
+  const toast = createTextElement("div", "");
+  root.append(toast);
   toast.setAttribute("role", "status");
   toast.setAttribute("aria-live", "polite");
   setStyles(toast, {
@@ -688,12 +595,13 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
 
   // The page selection moves into the comment box when it gets focus, so draw the
   // highlight for an edited citation separately.
-  const highlightLayer = addChild(root, document.createElement("div"));
+  const highlightLayer = document.createElement("div");
+  root.append(highlightLayer);
 
   document.body.appendChild(root);
 
   const migrateExistingCitationAttachments = (): void => {
-    for (const input of document.querySelectorAll(COMPOSER_INPUT_SELECTOR)) {
+    for (const input of document.querySelectorAll<HTMLTextAreaElement>(COMPOSER_INPUT_SELECTOR)) {
       const bridge = findComposerAttachmentBridge(input);
       if (bridge) migrateBridgeCitationAttachments(bridge);
     }
@@ -703,10 +611,10 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   let activeSelection: SelectionSnapshot | null = null;
   let editingCitation: EditingCitation | null = null;
   let citedSelections: CitedSelection[] = [];
-  let previousFocusedElement: DomElement | null = null;
-  let toastTimer: unknown = null;
-  let ignoreSelectionChangesTimer: unknown = null;
-  let selectionCommitTimer: unknown = null;
+  let previousFocusedElement: HTMLElement | null = null;
+  let toastTimer: number | null = null;
+  let ignoreSelectionChangesTimer: number | null = null;
+  let selectionCommitTimer: number | null = null;
 
   const suppressSelectionChanges = (): void => {
     if (ignoreSelectionChangesTimer !== null) window.clearTimeout(ignoreSelectionChangesTimer);
@@ -731,7 +639,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     const range = editingCitation?.range;
     if (!range || !elementIsConnected(elementForNode(range.commonAncestorContainer))) return;
     for (const rect of Array.from(range.getClientRects())) {
-      const box = addChild(highlightLayer, document.createElement("div"));
+      const box = document.createElement("div");
+      highlightLayer.append(box);
       setStyles(box, {
         position: "fixed",
         left: `${rect.left}px`,
@@ -744,7 +653,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     }
   };
 
-  const panelAnchorRect = (): DomRect | null => {
+  const panelAnchorRect = (): DOMRect | null => {
     if (activeSelection) return currentSelectionRect(activeSelection);
     if (!editingCitation) return null;
     const range = editingCitation.range;
@@ -770,7 +679,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   const openPanel = (comment: string, quote: string | null): void => {
     const rect = panelAnchorRect();
     if (!rect) return;
-    previousFocusedElement = document.activeElement;
+    previousFocusedElement =
+      document.activeElement instanceof window.HTMLElement ? document.activeElement : null;
     citeButton.style.display = "none";
     panel.setAttribute(
       "aria-label",
@@ -791,8 +701,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     if (activeSelection) openPanel("", null);
   };
 
-  const focusablePanelElements = (): DomNodeList<DomElement> =>
-    panel.querySelectorAll("button, textarea, [tabindex]");
+  const focusablePanelElements = (): NodeListOf<HTMLElement> =>
+    panel.querySelectorAll<HTMLElement>("button, textarea, [tabindex]");
 
   const updateSubmitButton = (): void => {
     if (commentInput.value.trim()) {
@@ -820,8 +730,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
   };
 
   // selectionchange does not always fire after a pointer or key selection ends.
-  const scheduleSelectionChange: DomListener = (event) => {
-    const target = event.target ?? null;
+  const scheduleSelectionChange = (event: Event): void => {
+    const target = targetElement(event);
     if (target && root.contains(target)) return;
 
     if (selectionCommitTimer !== null) window.clearTimeout(selectionCommitTimer);
@@ -831,15 +741,15 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     }, 0);
   };
 
-  const handleCiteButtonMouseDown: DomListener = (event) => {
+  const handleCiteButtonMouseDown = (event: Event): void => {
     event.preventDefault();
   };
-  const handleCiteButtonClick: DomListener = (event) => {
+  const handleCiteButtonClick = (event: Event): void => {
     event.preventDefault();
     event.stopPropagation();
     showPanel();
   };
-  const handleCancel: DomListener = (event) => {
+  const handleCancel = (event: Event): void => {
     event.preventDefault();
     closePanel();
   };
@@ -870,7 +780,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     bridge.setAttachments(() => result);
   };
 
-  const handleSubmit: DomListener = (event) => {
+  const handleSubmit = (event: Event): void => {
     event.preventDefault();
     if (!commentInput.value.trim()) return;
     if (editingCitation) {
@@ -925,10 +835,10 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
       })
       .catch(() => showToast("Could not add or copy the citation.", true));
   };
-  const handleCommentInput: DomListener = () => {
+  const handleCommentInput = (): void => {
     updateSubmitButton();
   };
-  const handlePanelEscape: DomListener = (event) => {
+  const handlePanelEscape = (event: KeyboardEvent): void => {
     if (event.key === "Tab") {
       const focusable = focusablePanelElements();
       if (focusable.length === 0) return;
@@ -951,7 +861,7 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     event.stopPropagation();
     closePanel();
   };
-  const handleCommentInputKeyDown: DomListener = (event) => {
+  const handleCommentInputKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== "Enter") return;
     if (event.isComposing || event.keyCode === 229) return;
 
@@ -961,16 +871,16 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
     event.preventDefault();
     handleSubmit(event);
   };
-  const handleCommentInputFocus: DomListener = () => {
+  const handleCommentInputFocus = (): void => {
     commentInput.style.borderColor = ACCENT;
     commentInput.style.boxShadow = "0 0 0 3px var(--colors-accent-muted, rgb(32 116 74 / 25%))";
   };
-  const handleCommentInputBlur: DomListener = () => {
+  const handleCommentInputBlur = (): void => {
     commentInput.style.borderColor = ACCENT;
     commentInput.style.boxShadow = "none";
   };
-  const handleOutsidePointerDown: DomListener = (event) => {
-    const target = event.target ?? null;
+  const handleOutsidePointerDown = (event: Event): void => {
+    const target = targetElement(event);
     if (
       panel.style.display === "block" &&
       !panel.contains(target) &&
@@ -979,8 +889,8 @@ export function startCitationOverlay(options: CitationOverlayOptions): () => voi
       closePanel();
     }
   };
-  const handleCitationAttachmentClick: DomListener = (event) => {
-    const pill = event.target?.closest(CITATION_PILL_SELECTOR) ?? null;
+  const handleCitationAttachmentClick = (event: MouseEvent): void => {
+    const pill = targetElement(event)?.closest(CITATION_PILL_SELECTOR) ?? null;
     const attachment = pill ? citationAttachmentForPill(pill) : null;
     if (!pill || !attachment) return;
 
