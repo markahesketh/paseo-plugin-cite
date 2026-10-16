@@ -226,10 +226,15 @@ function createOverlay(options: CitationOverlayOptions): () => void {
   const handleOutsidePointerDown = (event: Event): void => {
     if (panelOpen() && !root.contains(targetElement(event))) dismiss();
   };
-  const handlePillClick = (event: MouseEvent): void => {
+  const openEditFromPill = (event: Event): void => {
     const target = targetElement(event);
     const citation = target ? citationForPill(target) : null;
     if (citation) openEdit(citation, event);
+  };
+  // Paseo's pills press on Enter and Space from keyup, not click, so the keydown is
+  // taken first to open the edit instead of the pill's own action.
+  const handlePillKeyDown = (event: KeyboardEvent): void => {
+    if (event.key === "Enter" || event.key === " ") openEditFromPill(event);
   };
   const handleCancel = (event: Event): void => {
     event.preventDefault();
@@ -254,7 +259,8 @@ function createOverlay(options: CitationOverlayOptions): () => void {
   commentInput.addEventListener("input", view.commentChanged, { signal });
   commentInput.addEventListener("keydown", handleCommentKeyDown, { signal });
   document.addEventListener("mousedown", handleOutsidePointerDown, { signal, capture: true });
-  document.addEventListener("click", handlePillClick, { signal, capture: true });
+  document.addEventListener("click", openEditFromPill, { signal, capture: true });
+  document.addEventListener("keydown", handlePillKeyDown, { signal, capture: true });
 
   return () => {
     listeners.abort();

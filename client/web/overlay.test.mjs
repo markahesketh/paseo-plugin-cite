@@ -233,3 +233,22 @@ test("Cancel and a click outside the panel close it without changes", async () =
     await composer.cleanup();
   }
 });
+
+test("Enter or Space on a citation pill opens it for editing", async () => {
+  const composer = await renderComposer([citationAttachmentForEntry({ quote: "one", comment: "first" })]);
+  const stop = startOverlay();
+  try {
+    const enter = await keydown(composer.pill(0), "Enter");
+    assert.equal(shown(panel()), true);
+    assert.equal(comment().value, "first");
+    assert.equal(enter.defaultPrevented, true);
+
+    await keydown(comment(), "Escape");
+    const space = await keydown(composer.pill(0), " ");
+    assert.equal(shown(panel()), true);
+    assert.equal(space.defaultPrevented, true);
+  } finally {
+    stop();
+    await composer.cleanup();
+  }
+});
