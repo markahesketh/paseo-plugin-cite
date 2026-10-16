@@ -1,5 +1,3 @@
-// The client source uses extensionless imports for the Paseo bundler. Node needs the
-// ".ts" extension, so add it for relative imports from TypeScript files in tests.
 import { registerHooks } from "node:module";
 
 registerHooks({

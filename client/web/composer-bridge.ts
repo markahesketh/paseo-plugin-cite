@@ -8,7 +8,6 @@ import {
 } from "../citation-attachment";
 import { findFiberProps } from "../react-fiber";
 
-// Everything this plugin assumes about Paseo's private composer DOM and React props lives here.
 export const COMPOSER_ROOT_SELECTOR = '[data-testid="message-input-root"]';
 export const CITATION_PILL_SELECTOR = '[data-testid="composer-plugin-resource-attachment-pill"]';
 const COMPOSER_INPUT_SELECTOR = `${COMPOSER_ROOT_SELECTOR} textarea`;
@@ -42,7 +41,6 @@ function isPillProps(props: Record<string, unknown>): props is PillProps {
   return Boolean(props.attachment) && typeof props.attachment === "object";
 }
 
-// Hidden panes can stay mounted. Their composers have an empty rect.
 function isVisible(element: Element): boolean {
   const rect = element.getBoundingClientRect();
   return rect.right > rect.left && rect.bottom > rect.top;
@@ -54,8 +52,6 @@ function rectDistance(left: DOMRect, right: DOMRect): number {
   return horizontal ** 2 + vertical ** 2;
 }
 
-// The composer in the nearest ancestor that has one, closest to referenceRect when an
-// ancestor holds several.
 export function findComposerInput(
   near: Element,
   referenceRect: DOMRect,

@@ -169,8 +169,6 @@ export interface OverlayView {
   commentInput: HTMLTextAreaElement;
   cancelButton: HTMLButtonElement;
   submitButton: HTMLButtonElement;
-  // Entering compose or edit resets the comment box and focuses it, so a layout
-  // change calls reposition instead.
   render(state: OverlayState): void;
   reposition(state: OverlayState): void;
   commentChanged(): void;
@@ -193,7 +191,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
 }
 
-// The element must be visible so that it can measure itself.
 function placeNear(element: HTMLElement, anchor: DOMRect, prefer: "above" | "below"): void {
   const margin = 8;
   const { width, height } = element.getBoundingClientRect();
@@ -228,7 +225,6 @@ export function createOverlayView(): OverlayView {
   panel.setAttribute("aria-modal", "true");
   panel.tabIndex = -1;
 
-  // Shows the full quote when you edit a citation, because the pill shows only part of it.
   const quote = element("div", "quote");
   panel.append(quote);
 

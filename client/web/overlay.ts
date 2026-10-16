@@ -37,7 +37,6 @@ interface CitationOverlayOptions {
   copyFallback(text: string): Promise<void>;
 }
 
-// Where each cited quote was selected, so that editing it highlights the same text.
 interface CitedRange {
   quote: string;
   range: Range;
@@ -110,7 +109,6 @@ function createOverlay(options: CitationOverlayOptions): () => void {
     const selection = readSelection();
     setState(selection ? { kind: "offer", selection } : { kind: "idle" });
   };
-  // selectionchange does not always fire after a pointer or key selection ends.
   const scheduleSelectionChange = (event: Event): void => {
     const target = targetElement(event);
     if (target && root.contains(target)) return;
@@ -179,8 +177,6 @@ function createOverlay(options: CitationOverlayOptions): () => void {
       view.toast(result.reason);
       return;
     }
-    // The copy may finish after this panel closed, reopened for another selection, or
-    // the overlay was disposed.
     const stillOpen = (): boolean => state === compose && !signal.aborted;
     void options.copyFallback(formatCitationEntry(entry)).then(
       () => {
@@ -284,8 +280,6 @@ function createOverlay(options: CitationOverlayOptions): () => void {
   };
 }
 
-// The first starter's options serve every copy. Each copy's release function releases
-// its hold once, and the overlay is torn down when the last hold is released.
 export function startCitationOverlay(options: CitationOverlayOptions): () => void {
   if (!isBrowserRuntime()) {
     return () => {};

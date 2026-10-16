@@ -24,9 +24,6 @@ function findReactFiber(element: object): ReactFiberNode | null {
 // between two fiber copies, so the cached copy and its return pointers can hold props
 // from an older render. Follow the path from the committed root instead. At each level,
 // the committed fiber is the cached path fiber or its alternate.
-//
-// Returns the committed fibers from the element up to the root, or null if the
-// element is not in the committed tree.
 function findCommittedFiberPath(element: object): ReactFiberNode[] | null {
   const cachedPath: ReactFiberNode[] = [];
   for (let fiber = findReactFiber(element); fiber; fiber = fiber.return ?? null) {
@@ -51,7 +48,6 @@ function findCommittedFiberPath(element: object): ReactFiberNode[] | null {
   return committedPath.reverse();
 }
 
-// The props of the nearest committed fiber, from the element up to the root, that match.
 export function findFiberProps<Props extends Record<string, unknown>>(
   element: object,
   predicate: (props: Record<string, unknown>) => props is Props,

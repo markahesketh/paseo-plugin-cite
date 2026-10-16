@@ -15,7 +15,6 @@ const { findFiberProps } = await import("./react-fiber.ts");
 test("fiber props are the latest committed props after each render", async () => {
   let setAttachments;
   function Composer({ attachments }) {
-    // A controlled textarea changes props on each render, so its fiber alternates.
     return h("div", null, h("textarea", { value: attachments.join(","), onChange() {} }));
   }
   function App() {

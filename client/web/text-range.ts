@@ -52,8 +52,6 @@ export function rangeShowsQuote(range: Range, quote: string): boolean {
   return rangeIsConnected(range) && withoutWhitespace(range.toString()) === withoutWhitespace(quote);
 }
 
-// The first occurrence of the quote in the text under scope, outside the composer,
-// citation pills, and this plugin's overlay.
 export function findQuoteRange(scope: Node, quote: string): Range | null {
   const needle = withoutWhitespace(quote);
   if (!needle) return null;
@@ -90,8 +88,6 @@ export function findQuoteRange(scope: Node, quote: string): Range | null {
   return range;
 }
 
-// Searches outward from the composer so that text in its own conversation wins, and
-// stops before an ancestor that holds another composer, which is another pane.
 export function findQuoteNearComposer(
   input: HTMLTextAreaElement | null,
   quote: string,
@@ -105,7 +101,6 @@ export function findQuoteNearComposer(
     scope = scope.parentElement
   ) {
     if (scope.querySelectorAll(COMPOSER_ROOT_SELECTOR).length > 1) return null;
-    // A wrapper around only the last scope adds no text to search.
     if (scope.childNodes.length === 1) continue;
     const range = findQuoteRange(scope, quote);
     if (range) return range;

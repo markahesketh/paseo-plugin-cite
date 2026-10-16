@@ -7,7 +7,6 @@ const { window } = new JSDOM('<p id="answer">The answer is forty two.</p>');
 globalThis.window = window;
 globalThis.document = window.document;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-// jsdom has no layout, so give every element and range a visible rect.
 const rect = () => ({ top: 10, left: 10, right: 100, bottom: 30 });
 window.Element.prototype.getBoundingClientRect = rect;
 window.Element.prototype.scrollIntoView = () => {};
@@ -23,7 +22,6 @@ const { commentKeyAction, startCitationOverlay } = await import("./overlay.ts");
 const PILL_SELECTOR = '[data-testid="composer-plugin-resource-attachment-pill"]';
 const ANSWER = { quote: "The answer is forty two.", comment: "Check this claim." };
 
-// Paseo passes each pill its attachment and accepts functional composer updates.
 async function renderComposer(initialAttachments = []) {
   const container = document.createElement("div");
   document.body.append(container);
@@ -169,7 +167,6 @@ test("the citation is copied when the composer has no attachment bridge", async 
 });
 
 test("bundle copies share one overlay until the last copy releases it", async () => {
-  // Paseo evaluates the plugin bundle once per host, so each host has its own module copy.
   const secondCopy = await import("./overlay.ts?copy=2");
   const composer = await renderComposer([citationAttachmentForEntry({ quote: "one", comment: "first" })]);
   const releaseFirst = startOverlay();

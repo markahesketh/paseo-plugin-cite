@@ -57,7 +57,6 @@ export function previewText(text: string, maxLength: number): string {
   return preview.length <= maxLength ? preview : `${preview.slice(0, maxLength - 1).trimEnd()}…`;
 }
 
-// A stable ID for each entry, so that the same citation keeps the same pill.
 function citationAttachmentId(entry: CitationEntry): string {
   let hash = 2166136261;
   for (const character of `${entry.quote}\u0000${entry.comment}`) {
@@ -96,7 +95,6 @@ export function addCitationToAttachments(
   return [...attachments, citationAttachmentForEntry(entry)];
 }
 
-// Replaces the attachment for one entry in place, so that the pill order stays the same.
 export function replaceCitationInAttachments(
   attachments: unknown[],
   previous: CitationEntry,

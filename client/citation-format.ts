@@ -40,7 +40,6 @@ export function formatCitationEntry(entry: CitationEntry): string {
   return `${CITATION_HEADER}\n${quotedText}${CITATION_COMMENT_MARKER}${normalized.comment}`;
 }
 
-// Quote lines always start with ">", so the first comment marker is the real one.
 export function parseCitationEntry(text: string): CitationEntry | null {
   const normalized = text.replace(/\r\n?/g, "\n");
   if (!normalized.startsWith(`${CITATION_HEADER}\n`)) return null;
