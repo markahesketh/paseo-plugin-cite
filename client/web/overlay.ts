@@ -71,6 +71,8 @@ function createOverlay(options: CitationOverlayOptions): () => void {
   let state: OverlayState = { kind: "idle" };
   let citedRanges: CitedRange[] = [];
   let selectionTimer: number | null = null;
+  const listeners = new window.AbortController();
+  const { signal } = listeners;
 
   const setState = (next: OverlayState): void => {
     state = next;
@@ -167,12 +169,18 @@ function createOverlay(options: CitationOverlayOptions): () => void {
       view.toast(result.reason);
       return;
     }
+    // The copy may finish after this panel closed, reopened for another selection, or
+    // the overlay was disposed.
+    const stillOpen = (): boolean => state === compose && !signal.aborted;
     void options.copyFallback(formatCitationEntry(entry)).then(
       () => {
+        if (!stillOpen()) return;
         dismiss();
         view.toast("copied");
       },
-      () => view.toast("copy-failed"),
+      () => {
+        if (stillOpen()) view.toast("copy-failed");
+      },
     );
   };
 
@@ -243,8 +251,6 @@ function createOverlay(options: CitationOverlayOptions): () => void {
   const keepFocus = (event: Event): void => event.preventDefault();
   const handleWindowChange = (): void => view.reposition(state);
 
-  const listeners = new window.AbortController();
-  const { signal } = listeners;
   document.addEventListener("selectionchange", handleSelectionChange, { signal });
   document.addEventListener("pointerup", scheduleSelectionChange, { signal, capture: true });
   document.addEventListener("keyup", scheduleSelectionChange, { signal, capture: true });

@@ -252,3 +252,31 @@ test("Enter or Space on a citation pill opens it for editing", async () => {
     await composer.cleanup();
   }
 });
+
+test("a copy that finishes late leaves a reopened panel alone", async () => {
+  const composer = document.createElement("div");
+  composer.innerHTML = '<div data-testid="message-input-root"><textarea></textarea></div>';
+  document.body.append(composer);
+  let finishCopy;
+  const stop = startOverlay({
+    copyFallback: () => new Promise((resolve) => (finishCopy = resolve)),
+  });
+  try {
+    selectAnswer();
+    await click(citeButton());
+    await submitComment(ANSWER.comment);
+    await keydown(comment(), "Escape");
+    selectAnswer();
+    await click(citeButton());
+    assert.equal(shown(panel()), true);
+
+    finishCopy();
+    await new Promise((resolve) => setTimeout(resolve));
+
+    assert.equal(shown(panel()), true);
+    assert.equal(shown(document.querySelector("#paseo-cite-overlay [role=status]")), false);
+  } finally {
+    stop();
+    composer.remove();
+  }
+});
