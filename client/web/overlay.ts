@@ -55,6 +55,16 @@ interface SharedOverlay {
 
 const registry = globalThis as { [SHARED_OVERLAY]?: SharedOverlay };
 
+export type CommentKeyAction = "submit" | "newline" | "none";
+
+// keyCode 229 is a key pressed during IME composition on browsers that leave isComposing unset.
+export function commentKeyAction(
+  event: Pick<KeyboardEvent, "key" | "shiftKey" | "altKey" | "isComposing" | "keyCode">,
+): CommentKeyAction {
+  if (event.key !== "Enter" || event.isComposing || event.keyCode === 229) return "none";
+  return event.shiftKey || event.altKey ? "newline" : "submit";
+}
+
 function isBrowserRuntime(): boolean {
   return typeof document !== "undefined" && typeof window !== "undefined";
 }
@@ -225,11 +235,10 @@ function createOverlay(options: CitationOverlayOptions): () => void {
       dismiss();
       return;
     }
-    if (event.key !== "Enter") return;
-    if (event.isComposing || event.keyCode === 229) return;
+    const action = commentKeyAction(event);
+    if (action === "none") return;
     event.stopPropagation();
-    if (event.shiftKey || event.altKey) return;
-    submit(event);
+    if (action === "submit") submit(event);
   };
   const handleOutsidePointerDown = (event: Event): void => {
     if (panelOpen() && !root.contains(targetElement(event))) dismiss();

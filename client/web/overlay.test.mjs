@@ -18,7 +18,7 @@ const { act, createElement: h, useState } = await import("react");
 const { createRoot } = await import("react-dom/client");
 const { citationAttachmentForEntry, citationEntryForAttachment } = await import("../citation-attachment.ts");
 const { formatCitationEntry } = await import("../citation-format.ts");
-const { startCitationOverlay } = await import("./overlay.ts");
+const { commentKeyAction, startCitationOverlay } = await import("./overlay.ts");
 
 const PILL_SELECTOR = '[data-testid="composer-plugin-resource-attachment-pill"]';
 const ANSWER = { quote: "The answer is forty two.", comment: "Check this claim." };
@@ -279,4 +279,15 @@ test("a copy that finishes late leaves a reopened panel alone", async () => {
     stop();
     composer.remove();
   }
+});
+
+test("Enter submits the comment unless it inserts a newline or belongs to the IME", () => {
+  const enter = { key: "Enter", shiftKey: false, altKey: false, isComposing: false, keyCode: 13 };
+
+  assert.equal(commentKeyAction(enter), "submit");
+  assert.equal(commentKeyAction({ ...enter, shiftKey: true }), "newline");
+  assert.equal(commentKeyAction({ ...enter, altKey: true }), "newline");
+  assert.equal(commentKeyAction({ ...enter, isComposing: true }), "none");
+  assert.equal(commentKeyAction({ ...enter, keyCode: 229 }), "none");
+  assert.equal(commentKeyAction({ ...enter, key: "a" }), "none");
 });
