@@ -82,10 +82,15 @@ function updateAttachments(
   const props = input ? findFiberProps(input, isComposerAttachmentProps) : null;
   if (!props) return { ok: false, reason: "unavailable" };
 
-  const next = update(props.attachments);
-  if (typeof next === "string") return { ok: false, reason: next };
+  // React may run the updater after this returns, so the result is judged on the
+  // rendered attachments and the change is applied to the current ones.
+  const preview = update(props.attachments);
+  if (typeof preview === "string") return { ok: false, reason: preview };
   try {
-    props.onChangeAttachments(() => next);
+    props.onChangeAttachments((current) => {
+      const next = update(current);
+      return typeof next === "string" ? current : next;
+    });
   } catch {
     return { ok: false, reason: "unavailable" };
   }
