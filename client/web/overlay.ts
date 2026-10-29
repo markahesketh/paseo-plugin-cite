@@ -30,11 +30,15 @@ export type OverlayState =
       returnFocus: HTMLElement | null;
     };
 
-type Compose = Extract<OverlayState, { kind: "compose" }>;
 type Edit = Extract<OverlayState, { kind: "edit" }>;
 
 interface CitationOverlayOptions {
   copyFallback(text: string): Promise<void>;
+}
+
+interface SelectionTarget {
+  selection: SelectionSnapshot;
+  input: HTMLTextAreaElement | null;
 }
 
 interface CitedRange {
@@ -74,7 +78,7 @@ function targetElement(event: Event): Element | null {
 
 function createOverlay(options: CitationOverlayOptions): () => void {
   const view = createOverlayView();
-  const { root, citeButton, panel, commentInput, cancelButton, submitButton } = view;
+  const { root, toolbar, citeButton, panel, commentInput, cancelButton, submitButton } = view;
   document.body.appendChild(root);
 
   let state: OverlayState = { kind: "idle" };
@@ -109,14 +113,17 @@ function createOverlay(options: CitationOverlayOptions): () => void {
     setState(selection ? { kind: "offer", selection } : { kind: "idle" });
   };
 
+  const composerFor = (selection: SelectionSnapshot): HTMLTextAreaElement | null => {
+    const anchor = elementForNode(selection.range.commonAncestorContainer);
+    return anchor ? findComposerInput(anchor, selection.rect) : null;
+  };
+
   const openCompose = (event: Event): void => {
     event.preventDefault();
     event.stopPropagation();
     if (state.kind !== "offer") return;
     const { selection } = state;
-    const anchor = elementForNode(selection.range.commonAncestorContainer);
-    const input = anchor ? findComposerInput(anchor, selection.rect) : null;
-    setState({ kind: "compose", selection, input, returnFocus: focusToReturn() });
+    setState({ kind: "compose", selection, input: composerFor(selection), returnFocus: focusToReturn() });
   };
 
   const openEdit = ({ pill, entry, input }: CitationPill, event: Event): void => {
@@ -141,24 +148,25 @@ function createOverlay(options: CitationOverlayOptions): () => void {
     setState({ kind: "edit", pill, entry, input, range, returnFocus: focusToReturn() });
   };
 
-  const rememberCited = (compose: Compose, quote: string): void => {
+  const rememberCited = ({ selection, input }: SelectionTarget, quote: string): void => {
     citedRanges = citedRanges.filter(
       (cited) =>
         rangeShowsQuote(cited.range, cited.quote) &&
-        !(cited.quote === quote && cited.input === compose.input),
+        !(cited.quote === quote && cited.input === input),
     );
-    citedRanges.push({ quote, range: compose.selection.range, input: compose.input });
+    citedRanges.push({ quote, range: selection.range, input });
   };
 
-  const addFromSelection = (compose: Compose, comment: string): void => {
-    const entry = createCitationEntry(compose.selection.text, comment);
+  const addFromSelection = (target: SelectionTarget, comment: string): void => {
+    const requestedIn = state;
+    const entry = createCitationEntry(target.selection.text, comment);
     if (!entry) {
       view.toast("too-large");
       return;
     }
-    const result = addCitation(compose.input, entry);
+    const result = addCitation(target.input, entry);
     if (result.ok) {
-      rememberCited(compose, entry.quote);
+      rememberCited(target, entry.quote);
       dismiss();
       return;
     }
@@ -167,7 +175,7 @@ function createOverlay(options: CitationOverlayOptions): () => void {
       view.toast(result.reason);
       return;
     }
-    const stillOpen = (): boolean => state === compose && !signal.aborted;
+    const stillOpen = (): boolean => state === requestedIn && !signal.aborted;
     void options.copyFallback(formatCitationEntry(entry)).then(
       () => {
         if (!stillOpen()) return;
@@ -178,6 +186,14 @@ function createOverlay(options: CitationOverlayOptions): () => void {
         if (stillOpen()) view.toast("copy-failed");
       },
     );
+  };
+
+  const quickReply = (text: string, event: Event): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (state.kind !== "offer") return;
+    const { selection } = state;
+    addFromSelection({ selection, input: composerFor(selection) }, text);
   };
 
   const saveEdit = (edit: Edit, comment: string): void => {
@@ -260,9 +276,12 @@ function createOverlay(options: CitationOverlayOptions): () => void {
   document.addEventListener("selectionchange", handleSelectionChange, { signal });
   window.addEventListener("resize", handleWindowChange, { signal });
   window.addEventListener("scroll", handleWindowChange, { signal, capture: true });
-  citeButton.addEventListener("mousedown", keepFocus, { signal });
+  toolbar.addEventListener("mousedown", keepFocus, { signal });
   panel.addEventListener("mousedown", keepFocus, { signal });
   citeButton.addEventListener("click", openCompose, { signal });
+  for (const { text, button } of view.quickReplies) {
+    button.addEventListener("click", (event) => quickReply(text, event), { signal });
+  }
   cancelButton.addEventListener("click", handleCancel, { signal });
   panel.addEventListener("submit", submit, { signal });
   commentInput.addEventListener("input", view.commentChanged, { signal });
