@@ -97,7 +97,6 @@ function updateAttachments(
   return { ok: true };
 }
 
-// Composers that keep attachments private, like the Bots plugin's, still accept dropped files.
 function dropCitationFile(input: HTMLTextAreaElement, entry: CitationEntry): CitationResult {
   const preview = previewText(entry.comment, MAX_COMMENT_PREVIEW_LENGTH);
   const file = new window.File(
