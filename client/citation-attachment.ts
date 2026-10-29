@@ -9,7 +9,7 @@ const CITATION_SOURCE_ID = "citations";
 const CITATION_SOURCE_TITLE = "Citation";
 const CITATION_SOURCE_ICON = "MessageSquareCode";
 const CITATION_URL = "paseo-cite://citation";
-const MAX_COMMENT_PREVIEW_LENGTH = 48;
+export const MAX_COMMENT_PREVIEW_LENGTH = 48;
 const MAX_QUOTE_PREVIEW_LENGTH = 40;
 
 export interface CitationComposerAttachment {

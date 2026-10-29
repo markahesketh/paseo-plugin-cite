@@ -3,10 +3,13 @@ import test from "node:test";
 
 import { JSDOM } from "jsdom";
 
+import { installDragAndDrop } from "../../test/drag-and-drop.mjs";
+
 const { window } = new JSDOM('<p id="answer">The answer is forty two.</p>');
 globalThis.window = window;
 globalThis.document = window.document;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+installDragAndDrop(window);
 const rect = () => ({ top: 10, left: 10, right: 100, bottom: 30 });
 window.Element.prototype.getBoundingClientRect = rect;
 window.Element.prototype.scrollIntoView = () => {};
