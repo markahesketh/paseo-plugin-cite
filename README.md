@@ -15,6 +15,7 @@ Select part of an assistant reply, choose **Cite**, write a comment, and submit 
 - Shows a short form of the comment and the quote on each attachment.
 - Prevents duplicate citations.
 - Scrolls to and highlights the cited text when you select a citation attachment, or press `Enter` on it, and opens its comment for editing.
+- Adds the citation to composers from other plugins, such as Bots, as a dropped Markdown file attachment. You cannot edit this attachment from its card.
 - Copies the formatted citation when it cannot add the citation to the composer.
 
 ## Requirements
@@ -80,13 +81,15 @@ Paseo preserves the citation attachment when a message is queued, but its queue 
 
 Paseo does not currently expose a public API for adding an arbitrary attachment to the active composer from a selection event. The plugin therefore uses a small web-only bridge to Paseo's existing composer attachment setter. A Paseo UI change can require an update to this bridge.
 
+Composers from other plugins, such as Bots, keep their attachments private. The plugin drops the citation on these composers as a Markdown file, which they add as a file attachment. The plugin cannot prevent duplicates in these composers or edit the citation from its card.
+
 ### Selecting text
 
 The action is available for any selectable text outside the composer, so use it on assistant replies. Selecting a card searches only that card's conversation, not the sidebar or other panes. If the quote appears more than once, the occurrence nearest the composer is used. If the cited text is no longer in the conversation when you select its card, the plugin shows "Could not find the cited text in this conversation." and still opens the comment for editing.
 
 ### Fallback mode
 
-If the composer bridge is missing, Paseo rejects the attachment update, or no composer can be found, the plugin copies the formatted citation and shows a message so you can paste it into the composer.
+If the composer bridge is missing and the composer does not accept the dropped citation file, if Paseo rejects the attachment update, or if no composer can be found, the plugin copies the formatted citation and shows a message so you can paste it into the composer.
 
 ## Development
 
@@ -105,7 +108,7 @@ paseo plugin install /absolute/path/to/paseo-plugin-cite
 paseo plugin reload paseo-cite
 ```
 
-The test suite covers citation formatting, quote and comment content that looks like the format, size limits, one attachment for each citation, restored attachments, the card text, in-place edits, the copy fallback and a copy that finishes late, the committed React fiber lookup against React DOM, attachment updates the composer has not rendered yet, finding a cited quote in its own conversation, the Enter key decision, and the cite button, comment edit, keyboard, and close flows against jsdom and React DOM, including one overlay shared by two plugin bundle copies.
+The test suite covers citation formatting, quote and comment content that looks like the format, size limits, one attachment for each citation, restored attachments, the card text, in-place edits, the copy fallback and a copy that finishes late, the committed React fiber lookup against React DOM, attachment updates the composer has not rendered yet, the dropped citation file for composers from other plugins, finding a cited quote in its own conversation, the Enter key decision, and the cite button, comment edit, keyboard, and close flows against jsdom and React DOM, including one overlay shared by two plugin bundle copies.
 
 ## Project layout
 
@@ -127,6 +130,7 @@ The test suite covers citation formatting, quote and comment content that looks 
 │       ├── text-range.ts             Selection reading and quote search in the conversation
 │       └── text-range.test.mjs       Quote search tests against jsdom
 ├── test/
+│   ├── drag-and-drop.mjs             DataTransfer and DragEvent stand-ins for jsdom
 │   └── resolve-ts.mjs                Node import hook for TypeScript imports
 ├── index.client.tsx                  Paseo client entry point
 ├── paseo-plugin.json                 Paseo plugin manifest
