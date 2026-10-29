@@ -67,10 +67,12 @@ function startOverlay(options = {}) {
   };
 }
 
+const toolbar = () => document.getElementById("paseo-cite-actions");
 const citeButton = () => document.getElementById("paseo-cite-button");
 const panel = () => document.getElementById("paseo-cite-panel");
 const comment = () => panel().querySelector("textarea");
-const shown = (element) => Boolean(element?.isConnected) && !element.hidden;
+const shown = (element) =>
+  Boolean(element?.isConnected) && window.getComputedStyle(element).display !== "none";
 
 function selectAnswer() {
   const range = document.createRange();
@@ -106,7 +108,7 @@ test("a comment on selected text becomes a citation attachment", async () => {
   const stop = startOverlay();
   try {
     selectAnswer();
-    assert.equal(shown(citeButton()), true);
+    assert.equal(shown(toolbar()), true);
 
     await click(citeButton());
     assert.equal(shown(panel()), true);
@@ -115,6 +117,23 @@ test("a comment on selected text becomes a citation attachment", async () => {
 
     assert.equal(shown(panel()), false);
     assert.deepEqual(composer.entries(), [ANSWER]);
+  } finally {
+    stop();
+    await composer.cleanup();
+  }
+});
+
+test("a quick reply cites the selected text with its reply as the comment", async () => {
+  const composer = await renderComposer();
+  const stop = startOverlay();
+  try {
+    selectAnswer();
+    const yes = [...toolbar().querySelectorAll("button")].find((button) => button.textContent === "Yes");
+
+    await click(yes);
+
+    assert.deepEqual(composer.entries(), [{ quote: ANSWER.quote, comment: "Yes" }]);
+    assert.equal(shown(toolbar()), false);
   } finally {
     stop();
     await composer.cleanup();

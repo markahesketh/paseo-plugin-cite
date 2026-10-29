@@ -3,6 +3,7 @@ import type { OverlayState } from "./overlay";
 
 import { OVERLAY_ID, liveRect, rangeShowsQuote } from "./text-range";
 
+const ACTIONS_ID = "paseo-cite-actions";
 const CITE_BUTTON_ID = "paseo-cite-button";
 const CITE_PANEL_ID = "paseo-cite-panel";
 const FONT_STACK =
@@ -17,6 +18,8 @@ const ACCENT_MUTED = "var(--colors-accent-muted, rgb(32 116 74 / 25%))";
 const ACCENT_FOREGROUND = "var(--colors-accent-foreground, #ffffff)";
 const DESTRUCTIVE = "var(--colors-destructive, #dc2626)";
 
+const QUICK_REPLIES = ["Yes", "No"] as const;
+
 const STYLESHEET = `
 #${OVERLAY_ID} {
   position: fixed;
@@ -28,9 +31,16 @@ const STYLESHEET = `
 #${OVERLAY_ID} [hidden] {
   display: none;
 }
-#${OVERLAY_ID} .cite {
+#${OVERLAY_ID} .toolbar {
   position: fixed;
+  gap: 6px;
   pointer-events: auto;
+}
+#${OVERLAY_ID} .toolbar:not([hidden]) {
+  display: flex;
+}
+#${OVERLAY_ID} .cite,
+#${OVERLAY_ID} .reply {
   padding: 7px 11px;
   border: 1px solid ${BORDER};
   border-radius: 10px;
@@ -45,6 +55,10 @@ const STYLESHEET = `
   cursor: pointer;
   box-shadow: 0 4px 12px rgb(0 0 0 / 16%), 0 1px 3px rgb(0 0 0 / 10%);
   transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+}
+#${OVERLAY_ID} .reply {
+  background: ${SURFACE};
+  color: ${FOREGROUND};
 }
 #${OVERLAY_ID} .panel {
   position: fixed;
@@ -164,7 +178,9 @@ const MESSAGES: Record<Notice, { text: string; isError: boolean }> = {
 
 export interface OverlayView {
   root: HTMLElement;
+  toolbar: HTMLElement;
   citeButton: HTMLButtonElement;
+  quickReplies: { text: string; button: HTMLButtonElement }[];
   panel: HTMLFormElement;
   commentInput: HTMLTextAreaElement;
   cancelButton: HTMLButtonElement;
@@ -212,11 +228,23 @@ export function createOverlayView(): OverlayView {
   root.id = OVERLAY_ID;
   root.append(element("style", "", STYLESHEET));
 
+  const toolbar = element("div", "toolbar");
+  root.append(toolbar);
+  toolbar.id = ACTIONS_ID;
+
   const citeButton = element("button", "cite", "Cite");
-  root.append(citeButton);
+  toolbar.append(citeButton);
   citeButton.id = CITE_BUTTON_ID;
   citeButton.type = "button";
   citeButton.setAttribute("aria-label", "Cite selected answer text");
+
+  const quickReplies = QUICK_REPLIES.map((text) => {
+    const button = element("button", "reply", text);
+    toolbar.append(button);
+    button.type = "button";
+    button.setAttribute("aria-label", `Reply "${text}" to selected answer text`);
+    return { text, button };
+  });
 
   const panel = element("form", "panel");
   root.append(panel);
@@ -271,7 +299,7 @@ export function createOverlayView(): OverlayView {
     highlight.textContent = "";
     if (state.kind === "idle") return;
     if (state.kind === "offer") {
-      placeNear(citeButton, anchorRect(state), "above");
+      placeNear(toolbar, anchorRect(state), "above");
       return;
     }
     placeNear(panel, anchorRect(state), "below");
@@ -285,7 +313,7 @@ export function createOverlayView(): OverlayView {
   };
 
   const render = (state: OverlayState): void => {
-    citeButton.hidden = state.kind !== "offer";
+    toolbar.hidden = state.kind !== "offer";
     panel.hidden = state.kind !== "compose" && state.kind !== "edit";
     if (!panel.hidden) {
       const entry = state.kind === "edit" ? state.entry : null;
@@ -323,7 +351,9 @@ export function createOverlayView(): OverlayView {
   render({ kind: "idle" });
   return {
     root,
+    toolbar,
     citeButton,
+    quickReplies,
     panel,
     commentInput,
     cancelButton,

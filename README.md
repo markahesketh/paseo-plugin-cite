@@ -7,6 +7,7 @@ Select part of an assistant reply, choose **Cite**, write a comment, and submit 
 ## What it does
 
 - Shows a `Cite` action when you select conversation text.
+- Shows **Yes** and **No** quick replies next to `Cite`, which add the citation with that word as the comment.
 - Opens a comment form that matches Paseo's review UI in light and dark mode.
 - Submits with `Enter`.
 - Inserts a new line with `Shift+Enter` or `Alt+Enter`.
@@ -47,6 +48,8 @@ After installation, open or reload the Paseo client. Start a new conversation if
 4. Press `Enter` or select **Comment**.
 5. Continue writing your message in the composer.
 6. Submit the message normally.
+
+To answer with a plain yes or no, select **Yes** or **No** instead of **Cite**. The plugin adds the citation with that word as its comment, and no comment form opens.
 
 The composer shows one card for each citation. The card shows the start of your comment, with the start of the quote below it:
 
@@ -108,7 +111,7 @@ paseo plugin install /absolute/path/to/paseo-plugin-cite
 paseo plugin reload paseo-cite
 ```
 
-The test suite covers citation formatting, quote and comment content that looks like the format, size limits, one attachment for each citation, restored attachments, the card text, in-place edits, the copy fallback and a copy that finishes late, the committed React fiber lookup against React DOM, attachment updates the composer has not rendered yet, the dropped citation file for composers from other plugins, finding a cited quote in its own conversation, the Enter key decision, and the cite button, comment edit, keyboard, and close flows against jsdom and React DOM, including one overlay shared by two plugin bundle copies.
+The test suite covers citation formatting, quote and comment content that looks like the format, size limits, one attachment for each citation, restored attachments, the card text, in-place edits, the copy fallback and a copy that finishes late, the committed React fiber lookup against React DOM, attachment updates the composer has not rendered yet, the dropped citation file for composers from other plugins, finding a cited quote in its own conversation, the Enter key decision, and the cite button, quick reply, comment edit, keyboard, and close flows against jsdom and React DOM, including one overlay shared by two plugin bundle copies.
 
 ## Project layout
 
@@ -126,7 +129,7 @@ The test suite covers citation formatting, quote and comment content that looks 
 │       ├── composer-bridge.test.mjs  Attachment bridge tests against React DOM
 │       ├── overlay.ts                Overlay state and events, shared between plugin bundle copies
 │       ├── overlay.test.mjs          Overlay tests against jsdom
-│       ├── overlay-view.ts           Cite button, comment form, toast, and highlight elements and styles
+│       ├── overlay-view.ts           Cite and quick reply buttons, comment form, toast, and highlight elements and styles
 │       ├── text-range.ts             Selection reading and quote search in the conversation
 │       └── text-range.test.mjs       Quote search tests against jsdom
 ├── test/
